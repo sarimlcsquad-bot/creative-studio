@@ -17,9 +17,10 @@ The Anthropic, OpenAI and Supabase keys are only ever read on the server. The br
 - **Generate** (a step-by-step builder). It first asks who the creative is for (**Owner** or **Agency**).
   - **Random**: Setup → **Angle** (5 professional angles; pick one, ask for more, or write your own) → **Hook** (about 15 hooks for that angle; pick one or type your own) → **Content** (the words on the creative: headline, support line, bullets, extra line, button, plus the Meta ad copy, all editable) → **Assets** → **Generate**.
   - **With a prompt**: Setup with your direction → **Hook** (about 15 hooks for your prompt) → then the same Content, Assets and Generate steps.
-  - Every suggestion step has a direction box ("aim at new agency owners", "shorter, questions only") and a **Suggest again** button, so Claude re-suggests with your direction.
+  - Every step has a prompt field. In Setup it is the prompt (required for **With a prompt**, optional for **Random**, where it steers every later step). On Angle, Hook, Content and Assets, type a prompt ("aim at new agency owners", "shorter, questions only") and Claude generates new suggestions from it, always for the chosen angle and hook. On Generate, an optional design prompt ("dark background, hook huge at the top") guides the final layout without changing the copy.
+  - Method, format, design, awareness stage and number of layouts are under **Options** in Setup.
   - **Assets**: choose **Photo + AI image** (a brand photo in the background with the AI image on top), **AI image only**, or **Photo only**. AI image ideas are suggested as text (for example "Phone showing 3 missed calls"); pick one, edit the description, or write your own. The image is made once, when the creative is generated. Photos come from the brand kit or an upload. The logo is always added.
-  - Setup also has the method (**Pre-Sold** or **$100M Offers**), format (1:1, 4:5, 9:16), awareness stage, design (**Free design** or **Classic card**) and how many layouts. Going Back keeps what was already suggested.
+  - Going Back keeps what was already suggested.
 
 ### How a creative is made
 
@@ -99,7 +100,7 @@ All routes need the sign-in cookie. Errors come back as `{"error": "…"}`.
 | POST | `/api/creatives/update` | `{id, spec?, ad_copy?, concept?, rendered_url?}` | `{creative}` |
 | POST | `/api/creatives/delete` | `{id}` | `{ok}` |
 | POST | `/api/wizard` | `{step: angles\|hooks\|content\|assets, brand_id, method, stage, angle?, prompt?, hook?, copy?, format?, visual?, direction?, avoid?}` | `{angles}`, `{hooks}`, `{content}` or `{ideas}` |
-| POST | `/api/generate` | `{brand_id, mode: random\|prompt, prompt, count 1-4, format, photo_source: ai\|brand\|none, image_style: auto\|object\|illustration\|photo, stage, method: presold\|100m\|mix, source: agency\|owner, created_by, brief?}` (brief: the angle, hook, copy, ad copy, `visual: both\|ai\|photo`, photo and image idea from the builder) | `{creatives}` (the placeholder rows) |
+| POST | `/api/generate` | `{brand_id, mode: random\|prompt, prompt, count 1-4, format, photo_source: ai\|brand\|none, image_style: auto\|object\|illustration\|photo, stage, method: presold\|100m\|mix, source: agency\|owner, created_by, brief?}` (brief: the angle, hook, copy, ad copy, `visual: both\|ai\|photo`, photo, image idea and `design_notes` from the builder) | `{creatives}` (the placeholder rows) |
 
 ## Changing things
 

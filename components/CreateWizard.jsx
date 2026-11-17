@@ -21,13 +21,16 @@ function Loading({ text }) {
   return <div className="wz-loading"><span className="spinner dark" aria-hidden="true" /><span>{text}</span></div>;
 }
 
-/** A direction box under each step's suggestions: tell Claude what to change, then suggest again. */
-function Redo({ value, onChange, onGo, busy, placeholder, label = 'Suggest again' }) {
+/** The prompt field at the top of each step: tell Claude what you want, then generate. */
+function PromptBar({ value, onChange, onGo, onMore, busy, placeholder, label = 'Generate', moreLabel = 'Add more' }) {
   return (
-    <div className="wz-redo">
-      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
-        onKeyDown={(e) => { if (e.key === 'Enter' && !busy) onGo(); }} aria-label="Direction for new suggestions" />
-      <button className="btn outline sm" onClick={onGo} disabled={!!busy}>{label}</button>
+    <div className="wz-prompt">
+      <textarea rows={2} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !busy) { e.preventDefault(); onGo(); } }} aria-label="Prompt for this step" />
+      <div className="wz-prompt-actions">
+        <button className="btn primary sm" onClick={onGo} disabled={!!busy}><IconSpark /> {label}</button>
+        {onMore && <button className="btn ghost sm" onClick={onMore} disabled={!!busy}>{moreLabel}</button>}
+      </div>
     </div>
   );
 }
@@ -60,7 +63,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const [ideasFor, setIdeasFor] = useState('');
   const [ideaAt, setIdeaAt] = useState(-1);
   const [photoUrl, setPhotoUrl] = useState('');
-  const [dir, setDir] = useState({ angles: '', hooks: '', content: '', assets: '' });
+  const [dir, setDir] = useState({ angles: '', hooks: '', content: '', assets: '', design: '' });
   const setDirFor = (k, v) => setDir((d) => ({ ...d, [k]: v }));
 
   const brand = brands.find((b) => b.id === brandId);
@@ -76,17 +79,19 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
     finally { setBusy(''); }
   };
 
-  // more: add to the list; otherwise replace it. The step's direction box is always sent.
+  // In Random mode the optional setup prompt steers every step, together with the step's own prompt.
+  const withSetup = (d) => [mode === 'random' ? prompt.trim() : '', String(d || '').trim()].filter(Boolean).join('\nAlso: ');
+  // more: add to the list; otherwise replace it. The step's prompt is always sent.
   const loadAngles = async (more, direction = '') => {
-    const r = await ask({ step: 'angles', direction, avoid: angles.map((a) => a.title) }, direction ? 'Finding new angles with your direction…' : 'Finding angles for this brand…');
+    const r = await ask({ step: 'angles', direction: withSetup(direction), avoid: angles.map((a) => a.title) }, direction ? 'Finding new angles with your direction…' : 'Finding angles for this brand…');
     if (r) { setAngles(more ? [...angles, ...r.angles] : r.angles); if (!more && !ownAngle) setAngle(null); }
   };
   const loadHooks = async (more, direction = '') => {
-    const r = await ask({ step: 'hooks', direction, angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', avoid: hooks.map((h) => h.text) }, 'Writing 15 hooks…');
+    const r = await ask({ step: 'hooks', direction: withSetup(direction), angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', avoid: hooks.map((h) => h.text) }, 'Writing 15 hooks…');
     if (r) setHooks(more ? [...hooks, ...r.hooks] : r.hooks);
   };
   const loadContent = async (direction = '') => {
-    const r = await ask({ step: 'content', direction, angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', hook }, 'Writing the creative copy…');
+    const r = await ask({ step: 'content', direction: withSetup(direction), angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', hook }, 'Writing the creative copy…');
     if (r) {
       // The headline starts as the hook the person picked; they can still edit it here.
       setContent({ ...r.content, headline: hook.trim() || r.content.headline, bulletsText: (r.content.bullets || []).join('\n') });
@@ -94,7 +99,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   };
   const loadIdeas = async (direction = '', forVisual = visual) => {
     const r = await ask({
-      step: 'assets', direction, visual: forVisual, angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', hook,
+      step: 'assets', direction: withSetup(direction), visual: forVisual, angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', hook,
       copy: content ? { headline: content.headline, support: content.support, extra: content.extra } : null,
       avoid: direction ? [] : ideas.map((x) => x.idea),
     }, 'Suggesting visual assets…');
@@ -155,11 +160,11 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
     try {
       const bullets = (content.bulletsText || '').split('\n').map((t) => t.trim()).filter(Boolean);
       await api.generate({
-        brand_id: brandId, mode, prompt: mode === 'prompt' ? prompt.trim() : '', count, format, design, method,
+        brand_id: brandId, mode, prompt: prompt.trim(), count, format, design, method,
         stage: angle?.stage || stage, source, created_by: settings.userName || '',
         photo_source: usesAi ? 'ai' : usesPhoto ? 'brand' : 'none',
         brief: {
-          angle: mode === 'random' ? angle : null, hook,
+          angle: mode === 'random' ? angle : null, hook, design_notes: dir.design.trim(),
           content: { headline: content.headline, support: content.support, bullets, extra: content.extra, cta: content.cta },
           ad_copy: content.ad_copy, compliance_notes: content.compliance_notes,
           visual: visual || 'none', photo_url: usesPhoto ? photoUrl : '',
@@ -187,7 +192,8 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   );
 
   const summary = useMemo(() => [
-    mode === 'random' && angle ? ['Angle', angle.title] : mode === 'prompt' ? ['Prompt', prompt] : null,
+    prompt.trim() ? ['Prompt', prompt] : null,
+    mode === 'random' && angle ? ['Angle', angle.title] : null,
     hook ? ['Hook', hook] : null,
   ].filter(Boolean), [mode, angle, prompt, hook]);
 
@@ -202,7 +208,8 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
 
       {step === 'setup' && (
         <div className="wz-body">
-          <div className="field"><span>Who is this creative for?</span>
+          <div className="wz-section">
+            <h3>Who is this creative for?</h3>
             <div className="segmented" role="radiogroup" aria-label="Who is this creative for">
               <button role="radio" aria-checked={source === 'owner'} className={source === 'owner' ? 'on' : ''} onClick={() => setSource('owner')}>
                 <strong>Owner</strong><small>Made by or for the business owner</small>
@@ -212,55 +219,60 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
               </button>
             </div>
           </div>
-          <label className="field"><span>Brand</span>
-            <select value={brandId} onChange={(e) => setBrandId(e.target.value)}>{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
-          </label>
-          <div className="segmented" role="radiogroup" aria-label="Start from">
-            <button role="radio" aria-checked={mode === 'random'} className={mode === 'random' ? 'on' : ''} onClick={() => setMode('random')}>
-              <strong>Random</strong><small>Claude suggests angles, then hooks, from the brand kit</small>
-            </button>
-            <button role="radio" aria-checked={mode === 'prompt'} className={mode === 'prompt' ? 'on' : ''} onClick={() => setMode('prompt')}>
-              <strong>With a prompt</strong><small>Your direction; Claude suggests hooks for it</small>
-            </button>
+          <div className="wz-section">
+            <h3>Brand and starting point</h3>
+            <select value={brandId} onChange={(e) => setBrandId(e.target.value)} aria-label="Brand">{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+            <div className="segmented" role="radiogroup" aria-label="Start from" style={{ marginTop: 10 }}>
+              <button role="radio" aria-checked={mode === 'random'} className={mode === 'random' ? 'on' : ''} onClick={() => setMode('random')}>
+                <strong>Random</strong><small>Claude suggests angles, then hooks</small>
+              </button>
+              <button role="radio" aria-checked={mode === 'prompt'} className={mode === 'prompt' ? 'on' : ''} onClick={() => setMode('prompt')}>
+                <strong>With a prompt</strong><small>Your direction; Claude goes straight to hooks</small>
+              </button>
+            </div>
+            <textarea className="wz-setup-prompt" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="Prompt"
+              placeholder={mode === 'prompt'
+                ? 'Your prompt (required). e.g. Fall promo: first month half price for new agencies.'
+                : 'Prompt (optional). e.g. Focus on agencies that just signed their first client.'} />
           </div>
-          {mode === 'prompt' && (
-            <label className="field"><span>Prompt</span>
-              <textarea rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} autoFocus
-                placeholder="e.g. Fall promo: first treatment $49 for new customers. Homeowners who just found ants in the kitchen." />
-            </label>
-          )}
-          <div className="grid-2">
-            <label className="field"><span>Method</span>
-              <select value={method} onChange={(e) => setMethod(e.target.value)}>
-                <option value="presold">Pre-Sold (Jeff Miller)</option>
-                <option value="100m">$100M Offers (Hormozi)</option>
-              </select>
-            </label>
-            <label className="field"><span>Awareness stage</span>
-              <select value={stage} onChange={(e) => setStage(e.target.value)}>{STAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-            </label>
-            <label className="field"><span>Format</span>
-              <select value={format} onChange={(e) => setFormat(e.target.value)}>
-                <option value="1:1">Square 1:1 (Feed)</option><option value="4:5">Portrait 4:5 (Feed)</option><option value="9:16">Vertical 9:16 (Stories, Reels)</option>
-              </select>
-            </label>
-            <label className="field"><span>Design</span>
-              <select value={design} onChange={(e) => setDesign(e.target.value)}>
-                <option value="free">Free design (Claude creates the layout)</option><option value="classic">Classic card template</option>
-              </select>
-            </label>
-            <label className="field"><span>Versions</span>
-              <select value={count} onChange={(e) => setCount(Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n === 1 ? '1 design' : `${n} different layouts`}</option>)}</select>
-            </label>
-          </div>
+          <details className="wz-more">
+            <summary>Options: {method === '100m' ? '$100M Offers' : 'Pre-Sold'} · {format} · {design === 'free' ? 'Free design' : 'Classic card'} · {STAGE_SHORT[stage]} · {count} {count > 1 ? 'layouts' : 'design'}</summary>
+            <div className="grid-3">
+              <label className="field"><span>Method</span>
+                <select value={method} onChange={(e) => setMethod(e.target.value)}>
+                  <option value="presold">Pre-Sold (Jeff Miller)</option>
+                  <option value="100m">$100M Offers (Hormozi)</option>
+                </select>
+              </label>
+              <label className="field"><span>Format</span>
+                <select value={format} onChange={(e) => setFormat(e.target.value)}>
+                  <option value="1:1">Square 1:1 (Feed)</option><option value="4:5">Portrait 4:5 (Feed)</option><option value="9:16">Vertical 9:16 (Stories, Reels)</option>
+                </select>
+              </label>
+              <label className="field"><span>Design</span>
+                <select value={design} onChange={(e) => setDesign(e.target.value)}>
+                  <option value="free">Free design</option><option value="classic">Classic card</option>
+                </select>
+              </label>
+              <label className="field"><span>Awareness stage</span>
+                <select value={stage} onChange={(e) => setStage(e.target.value)}>{STAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+              </label>
+              <label className="field"><span>Versions</span>
+                <select value={count} onChange={(e) => setCount(Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n === 1 ? '1 design' : `${n} different layouts`}</option>)}</select>
+              </label>
+            </div>
+          </details>
         </div>
       )}
 
       {step === 'angle' && (
         <div className="wz-body">
           <div className="wz-head"><h3>Pick an angle</h3>
-            <div className="row-gap"><button className="btn ghost sm" onClick={() => { setOwnAngle(true); setAngle({ title: '', audience: '', insight: '', stage: stage === 'auto' ? 'problem' : stage }); }}>Write my own</button>
-              <button className="btn outline sm" onClick={() => loadAngles(true, dir.angles)} disabled={!!busy}>More angles</button></div></div>
+            <button className="link-btn" onClick={() => { setOwnAngle(true); setAngle({ title: '', audience: '', insight: '', stage: stage === 'auto' ? 'problem' : stage }); }}>Write my own</button></div>
+          <PromptBar value={dir.angles} onChange={(v) => setDirFor('angles', v)} busy={busy}
+            onGo={() => loadAngles(false, dir.angles)} onMore={() => loadAngles(true, dir.angles)} label="New angles" moreLabel="Add 5 more"
+            placeholder="Prompt for angles, e.g. aim at agency owners who just lost a client" />
+          {busy && <Loading text={busy} />}
           {ownAngle && angle && (
             <div className="wz-own">
               <input placeholder="Angle in a few words" value={angle.title} onChange={(e) => setAngle({ ...angle, title: e.target.value })} />
@@ -271,32 +283,29 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
           <div className="wz-cards">
             {angles.map((a, i) => (
               <button key={i} className={`wz-card ${!ownAngle && angle === a ? 'on' : ''}`} onClick={() => { setOwnAngle(false); setAngle(a); }}>
-                <span className="chip">{STAGE_SHORT[a.stage] || a.stage}</span>
-                <strong>{a.title}</strong>
-                <small><b>For:</b> {a.audience}</small>
-                <small>{a.insight}</small>
+                <span className="wz-card-top"><strong>{a.title}</strong><span className="chip">{STAGE_SHORT[a.stage] || a.stage}</span></span>
+                <small>{a.audience}</small>
+                <span className="wz-card-insight">{a.insight}</span>
               </button>
             ))}
           </div>
-          {busy && <Loading text={busy} />}
-          <Redo value={dir.angles} onChange={(v) => setDirFor('angles', v)} onGo={() => loadAngles(false, dir.angles)} busy={busy}
-            placeholder="Want different angles? e.g. aim at agency owners who just lost a client, or focus on the free trial" />
         </div>
       )}
 
       {step === 'hook' && (
         <div className="wz-body">
-          <div className="wz-head"><h3>Pick a hook</h3><button className="btn outline sm" onClick={() => loadHooks(true, dir.hooks)} disabled={!!busy}>More hooks</button></div>
+          <div className="wz-head"><h3>Pick a hook</h3></div>
+          <PromptBar value={dir.hooks} onChange={(v) => setDirFor('hooks', v)} busy={busy}
+            onGo={() => loadHooks(false, dir.hooks)} onMore={() => loadHooks(true, dir.hooks)} label="New hooks" moreLabel="Add more"
+            placeholder="Prompt for hooks, e.g. shorter, questions only, lead with the price" />
+          {busy && <Loading text={busy} />}
           <div className="wz-hooks">
             {hooks.map((h, i) => (
               <button key={i} className={`wz-hook ${hook === h.text ? 'on' : ''}`} onClick={() => setHook(h.text)}>
-                <span className="wz-num">{i + 1}</span><span className="wz-hook-text">{h.text}</span><span className="chip">{h.style}</span>
+                <span className="wz-hook-text">{h.text}</span><span className="wz-hook-style">{h.style}</span>
               </button>
             ))}
           </div>
-          {busy && <Loading text={busy} />}
-          <Redo value={dir.hooks} onChange={(v) => setDirFor('hooks', v)} onGo={() => loadHooks(false, dir.hooks)} busy={busy}
-            placeholder="Want different hooks? e.g. shorter, more questions, lead with the price" />
           <label className="field wz-edit"><span>Your hook (edit it, or write your own)</span>
             <input value={hook} onChange={(e) => setHook(e.target.value)} placeholder="Pick one above or type a hook" />
           </label>
@@ -305,13 +314,14 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
 
       {step === 'content' && (
         <div className="wz-body">
-          <div className="wz-head"><h3>What goes on the creative</h3><button className="btn outline sm" onClick={() => loadContent(dir.content)} disabled={!!busy}>Rewrite</button></div>
-          <Redo value={dir.content} onChange={(v) => setDirFor('content', v)} onGo={() => loadContent(dir.content)} busy={busy} label="Rewrite"
-            placeholder="Want it written differently? e.g. no bullets, mention the 14-day trial, softer tone" />
+          <div className="wz-head"><h3>What goes on the creative</h3></div>
+          <PromptBar value={dir.content} onChange={(v) => setDirFor('content', v)} busy={busy}
+            onGo={() => loadContent(dir.content)} label="Rewrite"
+            placeholder="Prompt for the copy, e.g. no bullets, mention the 14-day trial, softer tone" />
           {busy && <Loading text={busy} />}
           {content && (
             <>
-              <label className="field"><span>Hook / headline</span><input value={content.headline} onChange={(e) => setC('headline', e.target.value)} /></label>
+              <label className="field"><span>Headline (your hook)</span><input value={content.headline} onChange={(e) => setC('headline', e.target.value)} /></label>
               <label className="field"><span>Support line</span><textarea rows={2} value={content.support} onChange={(e) => setC('support', e.target.value)} /></label>
               <div className="grid-2">
                 <label className="field"><span>Bullets (one per line, optional)</span><textarea rows={4} value={content.bulletsText} onChange={(e) => setC('bulletsText', e.target.value)} /></label>
@@ -360,9 +370,12 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
 
           {usesAi && (
             <>
-              <div className="wz-head"><h4>{visual === 'both' ? 'AI image on top' : 'AI image'}</h4>
-                <button className="btn ghost sm" onClick={addOwnIdea} disabled={!!busy}>Write my own</button></div>
-              <p className="small muted">Pick an idea. The image is made when the creative is generated. You can edit the description.</p>
+              <div className="wz-head"><h4>{visual === 'both' ? 'AI image on top' : 'AI image'} <small className="muted">made when the creative is generated</small></h4>
+                <button className="link-btn" onClick={addOwnIdea} disabled={!!busy}>Write my own</button></div>
+              <PromptBar value={dir.assets} onChange={(v) => setDirFor('assets', v)} busy={busy}
+                onGo={() => loadIdeas(dir.assets)} label="New ideas"
+                placeholder="Prompt for the image, e.g. a 3D calendar, or a laptop showing a dashboard" />
+              {busy && <Loading text={busy} />}
               <div className="wz-ideas text">
                 {ideas.map((x, i) => (
                   <div key={i} className={`wz-idea ${ideaAt === i ? 'on' : ''}`} onClick={() => setIdeaAt(i)} role="radio" aria-checked={ideaAt === i} tabIndex={0}
@@ -375,9 +388,6 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
                   </div>
                 ))}
               </div>
-              {busy && <Loading text={busy} />}
-              <Redo value={dir.assets} onChange={(v) => setDirFor('assets', v)} onGo={() => loadIdeas(dir.assets)} busy={busy}
-                placeholder="Want other ideas? e.g. a calendar instead, more realistic, show a laptop dashboard" />
             </>
           )}
 
@@ -417,7 +427,11 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
             {content.bulletsText && <ul>{content.bulletsText.split('\n').filter(Boolean).map((t, i) => <li key={i}>{t}</li>)}</ul>}
             {content.extra && <p><strong>{content.extra}</strong></p>}
             {content.cta && <span className="wz-cta">{content.cta}</span>}
-            <p className="small muted" style={{ marginTop: 16 }}>
+            <label className="field wz-design-prompt"><span>Prompt for the design (optional)</span>
+              <textarea rows={2} value={dir.design} onChange={(e) => setDirFor('design', e.target.value)}
+                placeholder="e.g. dark background, the hook huge at the top, calendar on the right" />
+            </label>
+            <p className="small muted" style={{ marginTop: 8 }}>
               {design === 'free' ? 'Claude will design the layout around this copy, image and logo' : 'The classic card will use this copy, image and logo'}
               {count > 1 ? `, in ${count} different layouts.` : '.'} {format} · {brand?.name} · {source === 'agency' ? 'Agency' : 'Owner'}
               {visual === 'both' ? ' · Photo in the background, AI image on top' : ''}
