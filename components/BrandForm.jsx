@@ -224,8 +224,8 @@ export default function BrandForm({ brand, onCancel, onSaved, onDelete, onGenera
 
           <div className="kit-stage">
             <div className="stage-head">
-              <h3>Card previews</h3>
-              <span className="muted small">How creatives for this brand will look</span>
+              <h3>Brand look</h3>
+              <span className="muted small">Classic card examples. With Free design, Claude creates a new layout for every creative in these colours and fonts.</span>
             </div>
             <div className="stage-grid">
               <figure><canvas ref={canvasRefs[0]} aria-label="Dark card preview" /><figcaption>Dark card <span>text only</span></figcaption></figure>

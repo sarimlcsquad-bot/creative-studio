@@ -21,6 +21,7 @@ export default function GenerateModal({ brands, initialBrandId, settings, onClos
   const [format, setFormat] = useState('1:1');
   const [photoSource, setPhotoSource] = useState('brand');
   const [imageStyle, setImageStyle] = useState('auto');
+  const [design, setDesign] = useState('free');
   const [aiImages, setAiImages] = useState(false);
   useEffect(() => { api.config().then((c) => setAiImages(!!c.ai_images)); }, []);
   const [stage, setStage] = useState('auto');
@@ -30,8 +31,9 @@ export default function GenerateModal({ brands, initialBrandId, settings, onClos
 
   const brand = brands.find((b) => b.id === brandId);
   const hasBrandImages = (brand?.brand_images || []).length > 0;
-  const effSource = photoSource === 'brand' && !hasBrandImages ? (aiImages ? 'ai' : 'none')
+  let effSource = photoSource === 'brand' && !hasBrandImages ? (aiImages ? 'ai' : 'none')
     : photoSource === 'ai' && !aiImages ? (hasBrandImages ? 'brand' : 'none') : photoSource;
+  if (design !== 'classic' && effSource === 'none' && (aiImages || hasBrandImages)) effSource = aiImages ? 'ai' : 'brand';
 
   const submit = async () => {
     if (!brandId) return toast('Pick a brand', 'error');
@@ -40,7 +42,7 @@ export default function GenerateModal({ brands, initialBrandId, settings, onClos
     try {
       await api.generate({
         brand_id: brandId, mode, prompt: mode === 'prompt' ? prompt.trim() : '',
-        count, format, photo_source: effSource, image_style: imageStyle,
+        count, format, photo_source: effSource, image_style: imageStyle, design,
         stage, method, source, created_by: settings.userName || '',
       });
       toast(`Generating ${count} creative${count > 1 ? 's' : ''} for ${brand.name}. They appear as they finish.`);
@@ -85,6 +87,14 @@ export default function GenerateModal({ brands, initialBrandId, settings, onClos
         </select>
       </label>
 
+      <label className="field"><span>Design</span>
+        <select value={design} onChange={(e) => setDesign(e.target.value)}>
+          <option value="free">Free design: Claude creates its own layout and style for each creative</option>
+          <option value="classic">Classic card: headline, checklist and button template</option>
+        </select>
+        <small>Both use the brand's colours, fonts and logo.</small>
+      </label>
+
       <div className="grid-2">
         <label className="field"><span>How many</span>
           <select value={count} onChange={(e) => setCount(Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n}>{n}</option>)}</select>
@@ -103,7 +113,7 @@ export default function GenerateModal({ brands, initialBrandId, settings, onClos
           <select value={effSource} onChange={(e) => setPhotoSource(e.target.value)}>
             <option value="ai" disabled={!aiImages}>{aiImages ? 'New AI image (GPT)' : 'New AI image (add OPENAI_API_KEY to enable)'}</option>
             <option value="brand" disabled={!hasBrandImages}>{hasBrandImages ? 'Brand photo (Claude picks the best fit)' : 'Brand photo (upload some in the brand kit first)'}</option>
-            <option value="none">No photo (text card)</option>
+            {design === 'classic' && <option value="none">No photo (text card)</option>}
           </select>
         </label>
       </div>

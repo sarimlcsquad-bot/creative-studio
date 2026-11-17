@@ -1,7 +1,8 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
 import Modal from './Modal.jsx';
-import { renderCard } from '@/lib/client/renderCard';
+import { renderCard, FORMATS } from '@/lib/client/renderCard';
+import { editorDoc, toStoredHtml } from '@/lib/client/renderHtml';
 import { api } from '@/lib/client/api';
 import { toast } from './Toasts.jsx';
 import { STAGE_LABEL, METHOD_LABEL } from './CreativeCard.jsx';
@@ -21,16 +22,41 @@ function CopyField({ label, value }) {
   );
 }
 
+// Free designs are edited in place: click any text on the design and type.
+function HtmlEditor({ creative, brand, frameRef }) {
+  const fmt = FORMATS[creative.format] || FORMATS['1:1'];
+  const boxRef = useRef(null);
+  const [scale, setScale] = useState(0.4);
+  useEffect(() => {
+    const fit = () => boxRef.current && setScale(boxRef.current.clientWidth / fmt.w);
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [fmt.w]);
+  const onLoad = () => {
+    const doc = frameRef.current?.contentDocument;
+    if (doc) doc.designMode = 'on';
+  };
+  return (
+    <div ref={boxRef} className="html-editor" style={{ height: fmt.h * scale }}>
+      <iframe ref={frameRef} title="Edit design" sandbox="allow-same-origin" srcDoc={editorDoc(creative, brand)} onLoad={onLoad}
+        style={{ width: fmt.w, height: fmt.h, transform: `scale(${scale})` }} />
+    </div>
+  );
+}
+
 export default function CreativeDetail({ creative, brand, onClose, onDelete, onSaved }) {
   const ref = useRef(null);
   const [editing, setEditing] = useState(false);
   const [spec, setSpec] = useState(creative.spec || { blocks: [] });
   const [saving, setSaving] = useState(false);
+  const frameRef = useRef(null);
+  const isHtml = creative.spec?.mode === 'html';
 
   useEffect(() => { setSpec(creative.spec || { blocks: [] }); }, [creative.id]);
   useEffect(() => {
     if (ref.current) renderCard(ref.current, { ...creative, spec }, brand).catch(() => {});
-  }, [creative, brand, spec]);
+  }, [creative, brand, spec, editing]);
 
   const download = () => {
     const name = `${(brand?.name || 'creative').toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${creative.id.slice(0, 8)}-${creative.format.replace(':', 'x')}.png`;
@@ -53,7 +79,14 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
   const save = async () => {
     setSaving(true);
     try {
-      await api.updateCreative({ id: creative.id, spec, rendered_url: null });
+      let next = spec;
+      if (isHtml) {
+        const canvas = frameRef.current?.contentDocument?.querySelector('.canvas');
+        if (!canvas) throw new Error('The editor is still loading');
+        next = { ...spec, html: toStoredHtml(canvas.innerHTML, creative, brand) };
+        setSpec(next);
+      }
+      await api.updateCreative({ id: creative.id, spec: next, rendered_url: null });
       toast('Creative updated');
       setEditing(false);
       onSaved();
@@ -76,9 +109,13 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
               <button className="btn primary" onClick={download}>Download PNG</button></>}
       </>}>
       <div className="detail">
-        <div className="detail-canvas"><canvas ref={ref} /></div>
+        <div className="detail-canvas">
+          {editing && isHtml ? <HtmlEditor creative={{ ...creative, spec }} brand={brand} frameRef={frameRef} /> : <canvas ref={ref} />}
+        </div>
         <div className="detail-side">
-          {editing ? (
+          {editing && isHtml ? (
+            <div className="notice"><strong>Click any text on the design and type to change it.</strong> Save when you are done. To change the layout itself, generate a new creative.</div>
+          ) : editing ? (
             <div className="edit-blocks">
               {spec.blocks.map((b, i) => {
                 if (b.type === 'headline') return (
@@ -114,6 +151,8 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
                 {c.value_term && c.value_term !== 'n/a' && <span className="chip">{TERM_LABEL[c.value_term] || c.value_term}</span>}
                 {c.tier && <span className="chip">{c.tier} tier</span>}
               </div>
+              {c.hook && <p><strong>Hook:</strong> {c.hook}</p>}
+              {c.layout_name && <p className="small muted">Layout: {c.layout_name}</p>}
               {c.angle && <p><strong>Angle:</strong> {c.angle}</p>}
               {c.specific_object && <p><strong>Specific object:</strong> {c.specific_object}</p>}
               {c.magic_name && <p><strong>Offer name (needs approval):</strong> {c.magic_name}</p>}
@@ -128,7 +167,7 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
                 <div className="notice"><strong>Check before running:</strong><ul>{c.compliance_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
               )}
               {creative.prompt && <p className="small muted">Prompt: “{creative.prompt}”</p>}
-              {c.image_error && <div className="notice"><strong>AI image failed, shown as a text card:</strong> {c.image_error}</div>}
+              {c.image_error && <div className="notice"><strong>AI image failed, so the design has no image:</strong> {c.image_error}</div>}
               {creative.photo_prompt && <details className="small"><summary>{c.visual_type && c.visual_type !== 'photo' && c.visual_type !== 'n/a' ? 'Image prompt' : 'Photo prompt'}</summary><p className="muted">{creative.photo_prompt}</p></details>}
             </>
           )}

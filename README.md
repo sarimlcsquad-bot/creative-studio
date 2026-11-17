@@ -27,7 +27,7 @@ The Anthropic, OpenAI and Supabase keys are only ever read on the server. The br
    - **New AI image**: Claude writes an image brief (for example a 3D calendar with one day circled, in the brand's colours) and OpenAI generates it. The brief always forbids text, numbers and logos, because the card draws the words. The image is saved to the `creatives` bucket. If OpenAI fails, the creative is kept as a text card and the detail view says why.
    - **Brand photo**: one of the brand's uploaded photos, picked by Claude to fit the ad.
    - **No photo**: a text-only card.
-4. The browser draws the card (headline with the accent payoff line, sub-line, checklist or service grid, CTA pill, logo) in the brand's colours and fonts. Text is drawn, not generated, so it is always spelled exactly. The finished PNG is saved to storage automatically.
+4. **Design**: with **Free design** (the default), Claude art-directs each creative itself: it writes the layout as HTML and CSS for the exact canvas size (1080 x 1080, 1080 x 1350 or 1080 x 1920), using only the brand's colours, fonts, logo and the chosen image, and picks a different layout from the ones already used for that brand. Every free design has a hook as its biggest text, a visual asset (AI image or brand photo) and the logo; if Claude leaves the logo or image out, the server adds them. The HTML is cleaned of scripts and outside links, and the browser turns it into the PNG. Click **Edit text** on a free design to change any word directly on it. With **Classic card**, the browser draws the fixed performance-card template (headline, sub-line, checklist or grid, CTA pill, logo). Either way the text is real text, never painted by the image model, so it is always spelled exactly. The finished PNG is saved to storage automatically.
 
 ## Setup
 
@@ -97,9 +97,9 @@ All routes need the sign-in cookie. Errors come back as `{"error": "…"}`.
 
 ## Changing things
 
-- **The methods and the card/copy rules**: `prompts/` (`00-intro.md`, `method-presold.md`, `method-100m-offers.md`, `design-rules.md`). They are bundled at build time, so restart `npm run dev` or redeploy after editing.
+- **The methods and the design/copy rules**: `prompts/` (`00-intro.md`, `method-presold.md`, `method-100m-offers.md`, `design-free.md`, `design-classic.md`, `copy-and-output.md`). They are bundled at build time, so restart `npm run dev` or redeploy after editing.
 - **Model and effort**: the `CLAUDE_MODEL` and `CLAUDE_EFFORT` variables.
-- **Card look**: `lib/client/renderCard.js`.
+- **Card look**: `lib/client/renderHtml.js` (free designs) and `lib/client/renderCard.js` (classic card).
 - **Claude call**: `lib/server/claude.js`. It uses structured outputs, so Claude's answer always matches the creative schema in `lib/server/generate.js`, and server-side refusal fallbacks, so a request the safety filter declines is retried on a fallback model instead of failing.
 
 ## Cost per creative (rough)

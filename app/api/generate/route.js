@@ -17,8 +17,8 @@ export const POST = handler(async (request) => {
     brand_id: brand.id, source: req.source, created_by: req.created_by, mode: req.mode, prompt: req.prompt,
     format: req.format, photo_source: j.photo_source, stage: req.stage, method: j.method, status: 'generating',
   }))).select('*'));
-  const headlines = await recentFor(brand.id);
+  const { headlines, layouts } = await recentFor(brand.id);
   // Answer the browser now; write the creatives in the background, in parallel.
-  after(() => Promise.all(rows.map((row, i) => runJob({ creativeId: row.id, brand, req, job: jobs[i], headlines }))));
+  after(() => Promise.all(rows.map((row, i) => runJob({ creativeId: row.id, brand, req, job: jobs[i], headlines, layouts }))));
   return ok({ creatives: rows });
 });

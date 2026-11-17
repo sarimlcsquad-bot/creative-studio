@@ -4,10 +4,12 @@ import { readFileSync, writeFileSync } from 'node:fs';
 
 const read = (n) => readFileSync(new URL(`../prompts/${n}`, import.meta.url), 'utf8').trim();
 const intro = read('00-intro.md');
-const design = read('design-rules.md');
-const out = {
-  presold: [intro, read('method-presold.md'), design].join('\n\n'),
-  '100m': [intro, read('method-100m-offers.md'), design].join('\n\n'),
-};
+const tail = read('copy-and-output.md');
+const methods = { presold: read('method-presold.md'), '100m': read('method-100m-offers.md') };
+const designs = { classic: read('design-classic.md'), free: read('design-free.md') };
+const out = {};
+for (const [m, method] of Object.entries(methods)) {
+  for (const [d, design] of Object.entries(designs)) out[`${m}:${d}`] = [intro, method, design, tail].join('\n\n');
+}
 writeFileSync(new URL('../lib/server/prompts.json', import.meta.url), JSON.stringify(out, null, 2));
 console.log('prompts bundled');
