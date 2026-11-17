@@ -4,7 +4,7 @@ import { api } from '@/lib/client/api';
 import { getSettings, saveSettings } from '@/lib/client/settings';
 import BrandsPage from './BrandsPage.jsx';
 import CreativesPage from './CreativesPage.jsx';
-import GenerateModal from './GenerateModal.jsx';
+import CreateWizard from './CreateWizard.jsx';
 import SettingsModal from './SettingsModal.jsx';
 import { Toasts, toast } from './Toasts.jsx';
 import { IconBrands, IconCreatives, IconSettings } from './Icons.jsx';
@@ -66,7 +66,7 @@ export default function App() {
       </div>
 
       {showGenerate && (
-        <GenerateModal brands={brands} initialBrandId={showGenerate.brandId} settings={settings}
+        <CreateWizard brands={brands} initialBrandId={showGenerate.brandId} settings={settings}
           onClose={() => setShowGenerate(null)}
           onDone={() => { setShowGenerate(null); setTab('creatives'); setCreativesVersion((v) => v + 1); }} />
       )}

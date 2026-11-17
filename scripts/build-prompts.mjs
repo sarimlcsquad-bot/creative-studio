@@ -11,5 +11,7 @@ const out = {};
 for (const [m, method] of Object.entries(methods)) {
   for (const [d, design] of Object.entries(designs)) out[`${m}:${d}`] = [intro, method, design, tail].join('\n\n');
 }
+for (const [m, method] of Object.entries(methods)) out[`method:${m}`] = method;
+out.copy = tail;
 writeFileSync(new URL('../lib/server/prompts.json', import.meta.url), JSON.stringify(out, null, 2));
 console.log('prompts bundled');

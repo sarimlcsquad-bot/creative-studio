@@ -14,7 +14,10 @@ The Anthropic, OpenAI and Supabase keys are only ever read on the server. The br
 
 - **Brands tab**: create and edit brand kits. Basics (name, website, industry, location, description, managing agency), audience and offer (ideal customer, services, differentiators, offer/pricing, verified proof points, guarantees, default CTA), voice and rules (tone, banned phrases, compliance notes), social links, and the kit itself: logo, five colours, heading and body fonts, brand photos, with a live preview card. **Auto-fill from website** has Claude read the brand's site and fill the empty fields.
 - **Creatives tab**: every creative for every brand, with sub-tabs **All / Agency creatives / Owner creatives**, filters by brand and status, a detail view with the Meta ad copy (primary text, headline, description, button), the concept behind it, text editing, and PNG download.
-- **Generate**: pick a brand, then **Random** (Claude picks the angle from the brand kit) or **With a prompt** (your direction or extra info). Choose the method (**Pre-Sold**, **$100M Offers**, or **Mix**), how many (1 to 4), format (1:1, 4:5, 9:16), awareness stage, the image (**New AI image**, **Brand photo** or **No photo**), the AI image style (Let Claude choose, 3D icon or object, Illustration, Realistic photo) and Owner or Agency.
+- **Generate** (a step-by-step builder):
+  - **Random**: Setup → **Angle** (Claude suggests 8 angles; pick one, ask for more, or write your own) → **Hook** (about 15 hooks for that angle; pick one or type your own) → **Content** (the words on the creative: headline, support line, bullets, extra line, button, plus the Meta ad copy, all editable) → **Assets** (three AI image ideas you can generate and preview, or a brand photo, or upload one; the logo is always added) → **Generate** (Claude designs the creative around exactly that copy and image).
+  - **With a prompt**: Setup with your direction → **Hook** (about 15 hooks for your prompt) → then the same Content, Assets and Generate steps.
+  - Setup also has the method (**Pre-Sold** or **$100M Offers**), format (1:1, 4:5, 9:16), awareness stage, design (**Free design** or **Classic card**) and Owner or Agency. Going Back keeps what was already suggested; "More angles" and "More hooks" add new ones.
 
 ### How a creative is made
 
@@ -93,7 +96,8 @@ All routes need the sign-in cookie. Errors come back as `{"error": "…"}`.
 | GET | `/api/creatives` | `?brand_id=&source=agency\|owner&status=` | `{creatives}` |
 | POST | `/api/creatives/update` | `{id, spec?, ad_copy?, concept?, rendered_url?}` | `{creative}` |
 | POST | `/api/creatives/delete` | `{id}` | `{ok}` |
-| POST | `/api/generate` | `{brand_id, mode: random\|prompt, prompt, count 1-4, format, photo_source: ai\|brand\|none, image_style: auto\|object\|illustration\|photo, stage, method: presold\|100m\|mix, source: agency\|owner, created_by}` | `{creatives}` (the placeholder rows) |
+| POST | `/api/wizard` | `{step: angles\|hooks\|content\|image, brand_id, method, stage, angle?, prompt?, hook?, format?, avoid?}` (image: `{prompt, shape}`) | `{angles}`, `{hooks}`, `{content}` or `{url}` |
+| POST | `/api/generate` | `{brand_id, mode: random\|prompt, prompt, count 1-4, format, photo_source: ai\|brand\|none, image_style: auto\|object\|illustration\|photo, stage, method: presold\|100m\|mix, source: agency\|owner, created_by, brief?}` (brief: the angle, hook, copy, ad copy and chosen image from the builder) | `{creatives}` (the placeholder rows) |
 
 ## Changing things
 
@@ -104,7 +108,7 @@ All routes need the sign-in cookie. Errors come back as `{"error": "…"}`.
 
 ## Cost per creative (rough)
 
-One Claude call: a few thousand tokens in (more with brand photos attached), one to two thousand out. A New AI image adds one OpenAI image at the chosen quality. Auto-fill from website is one more Claude call.
+One Claude call: a few thousand tokens in (more with brand photos attached), one to two thousand out. A New AI image adds one OpenAI image at the chosen quality. Auto-fill from website is one more Claude call. The builder adds three or four quick Claude calls (angles, hooks, content, at medium effort), and each AI image preview is one OpenAI image.
 
 ## Files
 
