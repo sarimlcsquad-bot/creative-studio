@@ -128,7 +128,8 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
                 <div className="notice"><strong>Check before running:</strong><ul>{c.compliance_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
               )}
               {creative.prompt && <p className="small muted">Prompt: “{creative.prompt}”</p>}
-              {creative.photo_prompt && <details className="small"><summary>Photo prompt</summary><p className="muted">{creative.photo_prompt}</p></details>}
+              {c.image_error && <div className="notice"><strong>AI image failed, shown as a text card:</strong> {c.image_error}</div>}
+              {creative.photo_prompt && <details className="small"><summary>{c.visual_type && c.visual_type !== 'photo' && c.visual_type !== 'n/a' ? 'Image prompt' : 'Photo prompt'}</summary><p className="muted">{creative.photo_prompt}</p></details>}
             </>
           )}
         </div>
