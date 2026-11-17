@@ -31,13 +31,6 @@ export default function App() {
   const updateSettings = (patch) => setSettings(saveSettings(patch));
   const initial = (settings.userName || '?').trim().charAt(0).toUpperCase() || '?';
 
-  const roleSwitch = (
-    <div className="role-switch" title="Who is creating: tags new creatives as Owner or Agency">
-      <button className={settings.role === 'owner' ? 'on' : ''} onClick={() => updateSettings({ role: 'owner' })}>Owner</button>
-      <button className={settings.role === 'agency' ? 'on' : ''} onClick={() => updateSettings({ role: 'agency' })}>Agency</button>
-    </div>
-  );
-
   return (
     <div className="shell">
       <nav className="rail" aria-label="Main">
@@ -60,7 +53,7 @@ export default function App() {
           <BrandsPage brands={brands} loading={brandsLoading} onChanged={refreshBrands}
             onGenerate={(brandId) => setShowGenerate({ brandId })} />
         ) : (
-          <CreativesPage brands={brands} version={creativesVersion} roleSwitch={roleSwitch}
+          <CreativesPage brands={brands} version={creativesVersion}
             onGenerate={() => setShowGenerate({})} onGoBrands={() => setTab('brands')} />
         )}
       </div>

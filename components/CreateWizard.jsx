@@ -21,6 +21,17 @@ function Loading({ text }) {
   return <div className="wz-loading"><span className="spinner dark" aria-hidden="true" /><span>{text}</span></div>;
 }
 
+/** A direction box under each step's suggestions: tell Claude what to change, then suggest again. */
+function Redo({ value, onChange, onGo, busy, placeholder, label = 'Suggest again' }) {
+  return (
+    <div className="wz-redo">
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder}
+        onKeyDown={(e) => { if (e.key === 'Enter' && !busy) onGo(); }} aria-label="Direction for new suggestions" />
+      <button className="btn outline sm" onClick={onGo} disabled={!!busy}>{label}</button>
+    </div>
+  );
+}
+
 export default function CreateWizard({ brands, initialBrandId, settings, onClose, onDone }) {
   // Setup
   const [brandId, setBrandId] = useState(initialBrandId || brands[0]?.id || '');
@@ -31,7 +42,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const [format, setFormat] = useState('1:1');
   const [design, setDesign] = useState('free');
   const [count, setCount] = useState(1);
-  const [source, setSource] = useState(settings.role || 'owner');
+  const [source, setSource] = useState(''); // asked first: owner or agency
   const [aiImages, setAiImages] = useState(false);
   useEffect(() => { api.config().then((c) => setAiImages(!!c.ai_images)); }, []);
 
@@ -44,10 +55,13 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const [hooks, setHooks] = useState([]);
   const [hook, setHook] = useState('');
   const [content, setContent] = useState(null);
-  const [assetTab, setAssetTab] = useState('ai');
+  const [visual, setVisual] = useState(''); // both | ai | photo
   const [ideas, setIdeas] = useState([]);
-  const [asset, setAsset] = useState(null); // {url, source:'ai'|'brand', visual_type, prompt}
-  const [previews, setPreviews] = useState({}); // idea index -> url
+  const [ideasFor, setIdeasFor] = useState('');
+  const [ideaAt, setIdeaAt] = useState(-1);
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [dir, setDir] = useState({ angles: '', hooks: '', content: '', assets: '' });
+  const setDirFor = (k, v) => setDir((d) => ({ ...d, [k]: v }));
 
   const brand = brands.find((b) => b.id === brandId);
   const brandImages = (brand?.brand_images || []).filter((im) => /^https?:\/\//.test(im.url || ''));
@@ -62,23 +76,29 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
     finally { setBusy(''); }
   };
 
-  const loadAngles = async (more) => {
-    const r = await ask({ step: 'angles', avoid: more ? angles.map((a) => a.title) : [] }, 'Finding angles for this brand…');
-    if (r) setAngles(more ? [...angles, ...r.angles] : r.angles);
+  // more: add to the list; otherwise replace it. The step's direction box is always sent.
+  const loadAngles = async (more, direction = '') => {
+    const r = await ask({ step: 'angles', direction, avoid: angles.map((a) => a.title) }, direction ? 'Finding new angles with your direction…' : 'Finding angles for this brand…');
+    if (r) { setAngles(more ? [...angles, ...r.angles] : r.angles); if (!more && !ownAngle) setAngle(null); }
   };
-  const loadHooks = async (more) => {
-    const r = await ask({ step: 'hooks', angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', avoid: more ? hooks.map((h) => h.text) : [] }, 'Writing 15 hooks…');
+  const loadHooks = async (more, direction = '') => {
+    const r = await ask({ step: 'hooks', direction, angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', avoid: hooks.map((h) => h.text) }, 'Writing 15 hooks…');
     if (r) setHooks(more ? [...hooks, ...r.hooks] : r.hooks);
   };
-  const loadContent = async () => {
-    const r = await ask({ step: 'content', angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', hook }, 'Writing the creative copy…');
+  const loadContent = async (direction = '') => {
+    const r = await ask({ step: 'content', direction, angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', hook }, 'Writing the creative copy…');
     if (r) {
       // The headline starts as the hook the person picked; they can still edit it here.
       setContent({ ...r.content, headline: hook.trim() || r.content.headline, bulletsText: (r.content.bullets || []).join('\n') });
-      setIdeas(r.content.image_ideas || []);
-      setPreviews({});
-      setAsset(null);
     }
+  };
+  const loadIdeas = async (direction = '', forVisual = visual) => {
+    const r = await ask({
+      step: 'assets', direction, visual: forVisual, angle: mode === 'random' ? angle : null, prompt: mode === 'prompt' ? prompt : '', hook,
+      copy: content ? { headline: content.headline, support: content.support, extra: content.extra } : null,
+      avoid: direction ? [] : ideas.map((x) => x.idea),
+    }, 'Suggesting visual assets…');
+    if (r) { setIdeas(r.ideas); setIdeaAt(-1); setIdeasFor(contentKey); }
   };
 
   // Each step remembers what it was made for, so going Back and Next again keeps
@@ -88,11 +108,11 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const hookKey = `${setupKey}|${mode === 'random' ? JSON.stringify(angle) : ''}`;
   const contentKey = `${hookKey}|${hook}`;
   const canNext = {
-    setup: !!brandId && (mode === 'random' || prompt.trim()),
     angle: !!angle?.title?.trim(),
     hook: !!hook.trim(),
     content: !!content?.headline?.trim(),
-    assets: !!asset || (!aiImages && !brandImages.length),
+    setup: !!brandId && !!source && (mode === 'random' || prompt.trim()),
+    assets: visual === 'none' || ((visual === 'photo' || visual === 'both') ? !!photoUrl : true) && ((visual === 'ai' || visual === 'both') ? !!ideas[ideaAt]?.prompt?.trim() : true),
   }[step];
 
   const next = () => {
@@ -101,28 +121,31 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
     if (n === 'angle' && madeFor.angles !== setupKey) { setAngles([]); setAngle(null); setMadeFor((m) => ({ ...m, angles: setupKey })); loadAngles(false); }
     if (n === 'hook' && madeFor.hooks !== hookKey) { setHooks([]); setHook(''); setMadeFor((m) => ({ ...m, hooks: hookKey })); loadHooks(false); }
     if (n === 'content' && madeFor.content !== contentKey) { setContent(null); setMadeFor((m) => ({ ...m, content: contentKey })); loadContent(); }
-    if (n === 'assets' && !asset) setAssetTab(aiImages ? 'ai' : 'brand');
+    if (n === 'assets') {
+      const v = visual || (aiImages && brandImages.length ? 'both' : aiImages ? 'ai' : brandImages.length ? 'photo' : 'none');
+      setVisual(v);
+      if ((v === 'ai' || v === 'both') && ideasFor !== contentKey) { setIdeas([]); loadIdeas('', v); }
+    }
     setStep(n);
   };
   const back = () => setStep(steps[Math.max(0, at - 1)]);
 
-  const makePreview = async (i) => {
-    const idea = ideas[i];
-    setBusy(`Generating the image… about 30 to 60 seconds`);
-    try {
-      const { url } = await api.wizard({ step: 'image', prompt: idea.prompt, shape: idea.shape });
-      setPreviews((p) => ({ ...p, [i]: url }));
-      setAsset({ url, source: 'ai', visual_type: idea.visual_type, prompt: idea.prompt });
-    } catch (e) { toast(e.message, 'error'); }
-    finally { setBusy(''); }
+  const chooseVisual = (v) => {
+    setVisual(v);
+    if ((v === 'ai' || v === 'both') && ideasFor !== contentKey && !busy) { setIdeas([]); loadIdeas('', v); }
   };
+  const setIdea = (i, patch) => setIdeas((list) => list.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const addOwnIdea = () => { setIdeas((list) => [...list, { idea: 'My own idea', visual_type: 'object', shape: 'square', prompt: '' }]); setIdeaAt(ideas.length); };
+  const idea = ideas[ideaAt];
+  const usesAi = visual === 'ai' || visual === 'both';
+  const usesPhoto = visual === 'photo' || visual === 'both';
 
   const uploadOwn = async (file) => {
     if (!file) return;
     setBusy('Uploading…');
     try {
       const url = await api.upload(file, 'brand-images');
-      setAsset({ url, source: 'brand', visual_type: 'photo', prompt: '' });
+      setPhotoUrl(url);
     } catch (e) { toast(e.message, 'error'); }
     finally { setBusy(''); }
   };
@@ -134,12 +157,13 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
       await api.generate({
         brand_id: brandId, mode, prompt: mode === 'prompt' ? prompt.trim() : '', count, format, design, method,
         stage: angle?.stage || stage, source, created_by: settings.userName || '',
-        photo_source: asset ? asset.source : 'none',
+        photo_source: usesAi ? 'ai' : usesPhoto ? 'brand' : 'none',
         brief: {
           angle: mode === 'random' ? angle : null, hook,
           content: { headline: content.headline, support: content.support, bullets, extra: content.extra, cta: content.cta },
           ad_copy: content.ad_copy, compliance_notes: content.compliance_notes,
-          photo_url: asset?.url || '', asset_source: asset?.source, image_prompt: asset?.prompt || '', visual_type: asset?.visual_type,
+          visual: visual || 'none', photo_url: usesPhoto ? photoUrl : '',
+          image_prompt: usesAi ? idea?.prompt || '' : '', visual_type: idea?.visual_type || 'object', image_shape: idea?.shape || 'square',
         },
       });
       toast(`Designing ${count > 1 ? `${count} versions` : 'your creative'} for ${brand.name}. It appears in Creatives when ready.`);
@@ -178,6 +202,16 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
 
       {step === 'setup' && (
         <div className="wz-body">
+          <div className="field"><span>Who is this creative for?</span>
+            <div className="segmented" role="radiogroup" aria-label="Who is this creative for">
+              <button role="radio" aria-checked={source === 'owner'} className={source === 'owner' ? 'on' : ''} onClick={() => setSource('owner')}>
+                <strong>Owner</strong><small>Made by or for the business owner</small>
+              </button>
+              <button role="radio" aria-checked={source === 'agency'} className={source === 'agency' ? 'on' : ''} onClick={() => setSource('agency')}>
+                <strong>Agency</strong><small>Made by the agency{brand?.agency_name ? ` (${brand.agency_name})` : ''}</small>
+              </button>
+            </div>
+          </div>
           <label className="field"><span>Brand</span>
             <select value={brandId} onChange={(e) => setBrandId(e.target.value)}>{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
           </label>
@@ -218,11 +252,6 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
             <label className="field"><span>Versions</span>
               <select value={count} onChange={(e) => setCount(Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n === 1 ? '1 design' : `${n} different layouts`}</option>)}</select>
             </label>
-            <label className="field"><span>Created as</span>
-              <select value={source} onChange={(e) => setSource(e.target.value)}>
-                <option value="owner">Owner</option><option value="agency">Agency{brand?.agency_name ? ` (${brand.agency_name})` : ''}</option>
-              </select>
-            </label>
           </div>
         </div>
       )}
@@ -231,7 +260,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
         <div className="wz-body">
           <div className="wz-head"><h3>Pick an angle</h3>
             <div className="row-gap"><button className="btn ghost sm" onClick={() => { setOwnAngle(true); setAngle({ title: '', audience: '', insight: '', stage: stage === 'auto' ? 'problem' : stage }); }}>Write my own</button>
-              <button className="btn outline sm" onClick={() => loadAngles(true)} disabled={!!busy}>More angles</button></div></div>
+              <button className="btn outline sm" onClick={() => loadAngles(true, dir.angles)} disabled={!!busy}>More angles</button></div></div>
           {ownAngle && angle && (
             <div className="wz-own">
               <input placeholder="Angle in a few words" value={angle.title} onChange={(e) => setAngle({ ...angle, title: e.target.value })} />
@@ -250,12 +279,14 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
             ))}
           </div>
           {busy && <Loading text={busy} />}
+          <Redo value={dir.angles} onChange={(v) => setDirFor('angles', v)} onGo={() => loadAngles(false, dir.angles)} busy={busy}
+            placeholder="Want different angles? e.g. aim at agency owners who just lost a client, or focus on the free trial" />
         </div>
       )}
 
       {step === 'hook' && (
         <div className="wz-body">
-          <div className="wz-head"><h3>Pick a hook</h3><button className="btn outline sm" onClick={() => loadHooks(true)} disabled={!!busy}>More hooks</button></div>
+          <div className="wz-head"><h3>Pick a hook</h3><button className="btn outline sm" onClick={() => loadHooks(true, dir.hooks)} disabled={!!busy}>More hooks</button></div>
           <div className="wz-hooks">
             {hooks.map((h, i) => (
               <button key={i} className={`wz-hook ${hook === h.text ? 'on' : ''}`} onClick={() => setHook(h.text)}>
@@ -264,6 +295,8 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
             ))}
           </div>
           {busy && <Loading text={busy} />}
+          <Redo value={dir.hooks} onChange={(v) => setDirFor('hooks', v)} onGo={() => loadHooks(false, dir.hooks)} busy={busy}
+            placeholder="Want different hooks? e.g. shorter, more questions, lead with the price" />
           <label className="field wz-edit"><span>Your hook (edit it, or write your own)</span>
             <input value={hook} onChange={(e) => setHook(e.target.value)} placeholder="Pick one above or type a hook" />
           </label>
@@ -272,7 +305,9 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
 
       {step === 'content' && (
         <div className="wz-body">
-          <div className="wz-head"><h3>What goes on the creative</h3><button className="btn outline sm" onClick={loadContent} disabled={!!busy}>Rewrite</button></div>
+          <div className="wz-head"><h3>What goes on the creative</h3><button className="btn outline sm" onClick={() => loadContent(dir.content)} disabled={!!busy}>Rewrite</button></div>
+          <Redo value={dir.content} onChange={(v) => setDirFor('content', v)} onGo={() => loadContent(dir.content)} busy={busy} label="Rewrite"
+            placeholder="Want it written differently? e.g. no bullets, mention the 14-day trial, softer tone" />
           {busy && <Loading text={busy} />}
           {content && (
             <>
@@ -306,55 +341,76 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
 
       {step === 'assets' && (
         <div className="wz-body">
-          <div className="wz-head"><h3>Choose the visual asset</h3>
+          <div className="wz-head"><h3>Choose the visual</h3>
             {brand?.logo_url
               ? <span className="wz-logo">Logo added automatically <img src={brand.logo_url} alt="" style={{ background: brand.colors?.deep || '#111' }} /></span>
               : <span className="muted small">No logo in the brand kit, so the brand name is used as a wordmark</span>}
           </div>
-          <div className="subtabs">
-            <button className={assetTab === 'ai' ? 'active' : ''} onClick={() => setAssetTab('ai')} disabled={!aiImages}>AI image{aiImages ? '' : ' (add OPENAI_API_KEY)'}</button>
-            <button className={assetTab === 'brand' ? 'active' : ''} onClick={() => setAssetTab('brand')}>Brand photos</button>
+          <div className="segmented three" role="radiogroup" aria-label="Visual">
+            <button role="radio" aria-checked={visual === 'both'} className={visual === 'both' ? 'on' : ''} onClick={() => chooseVisual('both')} disabled={!aiImages}>
+              <strong>Photo + AI image</strong><small>{aiImages ? 'Brand photo in the background, AI image on top' : 'Needs OPENAI_API_KEY'}</small>
+            </button>
+            <button role="radio" aria-checked={visual === 'ai'} className={visual === 'ai' ? 'on' : ''} onClick={() => chooseVisual('ai')} disabled={!aiImages}>
+              <strong>AI image only</strong><small>{aiImages ? 'No photo' : 'Needs OPENAI_API_KEY'}</small>
+            </button>
+            <button role="radio" aria-checked={visual === 'photo'} className={visual === 'photo' ? 'on' : ''} onClick={() => chooseVisual('photo')}>
+              <strong>Photo only</strong><small>No AI image</small>
+            </button>
           </div>
-          {assetTab === 'ai' && (
-            <div className="wz-ideas">
-              {ideas.map((idea, i) => (
-                <div key={i} className={`wz-idea ${asset?.url && asset.url === previews[i] ? 'on' : ''}`}>
-                  <div className="wz-idea-img">
-                    {previews[i]
-                      ? <button onClick={() => setAsset({ url: previews[i], source: 'ai', visual_type: idea.visual_type, prompt: idea.prompt })}><img src={previews[i]} alt={idea.idea} /></button>
-                      : <span className="muted small">{VISUAL_LABEL[idea.visual_type]} · {idea.shape}</span>}
+
+          {usesAi && (
+            <>
+              <div className="wz-head"><h4>{visual === 'both' ? 'AI image on top' : 'AI image'}</h4>
+                <button className="btn ghost sm" onClick={addOwnIdea} disabled={!!busy}>Write my own</button></div>
+              <p className="small muted">Pick an idea. The image is made when the creative is generated. You can edit the description.</p>
+              <div className="wz-ideas text">
+                {ideas.map((x, i) => (
+                  <div key={i} className={`wz-idea ${ideaAt === i ? 'on' : ''}`} onClick={() => setIdeaAt(i)} role="radio" aria-checked={ideaAt === i} tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setIdeaAt(i); }}>
+                    <span className="chip">{VISUAL_LABEL[x.visual_type] || x.visual_type} · {x.shape}</span>
+                    <strong>{x.idea}</strong>
+                    {ideaAt === i
+                      ? <textarea rows={4} value={x.prompt} onChange={(e) => setIdea(i, { prompt: e.target.value })} aria-label="Image description" placeholder="Describe the image: e.g. glossy 3D phone showing 3 missed calls, brand purple, plain background" />
+                      : <small>{x.prompt}</small>}
                   </div>
-                  <strong>{idea.idea}</strong>
-                  <textarea rows={3} value={idea.prompt} onChange={(e) => setIdeas((list) => list.map((x, j) => (j === i ? { ...x, prompt: e.target.value } : x)))} aria-label="Image prompt" />
-                  <button className="btn outline sm" onClick={() => makePreview(i)} disabled={!!busy}>{previews[i] ? 'Regenerate' : 'Generate image'}</button>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              {busy && <Loading text={busy} />}
+              <Redo value={dir.assets} onChange={(v) => setDirFor('assets', v)} onGo={() => loadIdeas(dir.assets)} busy={busy}
+                placeholder="Want other ideas? e.g. a calendar instead, more realistic, show a laptop dashboard" />
+            </>
           )}
-          {assetTab === 'brand' && (
-            <div className="thumbs wz-photos">
-              {brandImages.map((im) => (
-                <button key={im.url} className={`thumb ${asset?.url === im.url ? 'on' : ''}`} onClick={() => setAsset({ url: im.url, source: 'brand', visual_type: 'photo', prompt: '' })}>
-                  <img src={im.url} alt={im.label || 'Brand photo'} />
-                </button>
-              ))}
-              {asset?.source === 'brand' && !brandImages.some((im) => im.url === asset.url) && (
-                <button className="thumb on"><img src={asset.url} alt="Uploaded" /></button>
-              )}
-              <label className="thumb add">
-                <input type="file" accept="image/*" onChange={(e) => uploadOwn(e.target.files[0])} aria-label="Upload an image" />
-                <span>+ Upload</span>
-              </label>
-            </div>
+
+          {usesPhoto && (
+            <>
+              <div className="wz-head"><h4>{visual === 'both' ? 'Background photo' : 'Photo'}</h4></div>
+              <div className="thumbs wz-photos">
+                {brandImages.map((im) => (
+                  <button key={im.url} className={`thumb ${photoUrl === im.url ? 'on' : ''}`} onClick={() => setPhotoUrl(im.url)}>
+                    <img src={im.url} alt={im.label || 'Brand photo'} />
+                  </button>
+                ))}
+                {photoUrl && !brandImages.some((im) => im.url === photoUrl) && (
+                  <button className="thumb on"><img src={photoUrl} alt="Uploaded" /></button>
+                )}
+                <label className="thumb add">
+                  <input type="file" accept="image/*" onChange={(e) => uploadOwn(e.target.files[0])} aria-label="Upload a photo" />
+                  <span>+ Upload</span>
+                </label>
+              </div>
+              {!usesAi && busy && <Loading text={busy} />}
+            </>
           )}
-          {busy && <Loading text={busy} />}
-          {asset && <p className="small muted">Selected: {asset.source === 'ai' ? 'AI image' : 'brand photo'}.</p>}
         </div>
       )}
 
       {step === 'generate' && (
         <div className="wz-body wz-review">
-          <div className="wz-review-img">{asset ? <img src={asset.url} alt="Chosen asset" /> : <span className="muted small">No image</span>}</div>
+          <div className="wz-review-img">
+            {usesPhoto && photoUrl ? <img src={photoUrl} alt="Chosen photo" /> : null}
+            {usesAi && idea && <div className={`wz-review-idea ${usesPhoto ? 'over' : ''}`}><span className="chip">AI {VISUAL_LABEL[idea.visual_type] || 'image'}</span><strong>{idea.idea}</strong></div>}
+            {!usesPhoto && !usesAi && <span className="muted small">No image</span>}
+          </div>
           <div>
             <h3>{content.headline}</h3>
             {content.support && <p>{content.support}</p>}
@@ -363,7 +419,8 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
             {content.cta && <span className="wz-cta">{content.cta}</span>}
             <p className="small muted" style={{ marginTop: 16 }}>
               {design === 'free' ? 'Claude will design the layout around this copy, image and logo' : 'The classic card will use this copy, image and logo'}
-              {count > 1 ? `, in ${count} different layouts.` : '.'} {format} · {brand?.name}
+              {count > 1 ? `, in ${count} different layouts.` : '.'} {format} · {brand?.name} · {source === 'agency' ? 'Agency' : 'Owner'}
+              {visual === 'both' ? ' · Photo in the background, AI image on top' : ''}
             </p>
           </div>
         </div>

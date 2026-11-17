@@ -33,7 +33,7 @@ Pick a layout that suits the angle, and do not repeat the layouts listed as alre
 
 - `html`: only the inner content of `.canvas`. Allowed elements: div, span, p, h1 to h6, strong, em, b, i, br, ul, ol, li, img, svg and its shapes (path, circle, rect, line, polyline, polygon, g, defs, linearGradient, radialGradient, stop; no svg <text>). Use classes and put styling in `css`; short inline style attributes are fine.
 - `css`: plain CSS for your classes, scoped under `.canvas`. No @import, no @font-face, no external url(), no animations, no :hover. `position: absolute` children need `.canvas` as their containing block (it already has `position: relative`).
-- No scripts, event handlers, links, forms, iframes or external resources. The only URLs allowed are `{{LOGO}}` and `{{PHOTO}}`.
+- No scripts, event handlers, links, forms, iframes or external resources. The only URLs allowed are `{{LOGO}}`, `{{PHOTO}}` and, only when the request gives a background photo, `{{BG}}`.
 - Set `layout_name` to a 2 to 5 word name for the layout you chose (for example "split photo stat", "offer ticket", "notification mock").
 - Set `image_shape` to the aspect the image is shown at in your design: "square", "tall" or "wide" ("none" when there is no image). A new AI image is generated at that shape.
 

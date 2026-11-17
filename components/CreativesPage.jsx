@@ -12,7 +12,7 @@ const SUBTABS = [
   ['owner', 'Owner creatives'],
 ];
 
-export default function CreativesPage({ brands, version, roleSwitch, onGenerate, onGoBrands }) {
+export default function CreativesPage({ brands, version, onGenerate, onGoBrands }) {
   const [sub, setSub] = useState('all');
   const [brandId, setBrandId] = useState('');
   const [status, setStatus] = useState('');
@@ -73,7 +73,6 @@ export default function CreativesPage({ brands, version, roleSwitch, onGenerate,
           <p className="muted">Every creative made for every brand, by agencies and owners.</p>
         </div>
         <div className="row-gap center">
-          {roleSwitch}
           <button className="btn primary" onClick={onGenerate}><IconSpark /> Generate</button>
         </div>
       </div>
