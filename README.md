@@ -1,0 +1,111 @@
+# Creative Studio: AI Brand Kit & Creative Generator
+
+A web app for building brand kits and generating Meta ad creatives from them. It is one Next.js app: the pages and its own backend (API routes) live together. The backend calls Claude directly and stores everything in Supabase. No n8n.
+
+```
+Browser  ──(password cookie)──▶  Next.js API routes  ──▶  Supabase (Postgres + image storage)
+                                        └──────────────▶  Claude API (writes each creative)
+```
+
+The Anthropic key and the Supabase service key are only ever read on the server. The browser never sees them.
+
+## What it does
+
+- **Brands tab**: create and edit brand kits. Basics (name, website, industry, location, description, managing agency), audience and offer (ideal customer, services, differentiators, offer/pricing, verified proof points, guarantees, default CTA), voice and rules (tone, banned phrases, compliance notes), social links, and the kit itself: logo, five colours, heading and body fonts, brand photos, with a live preview card. **Auto-fill from website** has Claude read the brand's site and fill the empty fields.
+- **Creatives tab**: every creative for every brand, with sub-tabs **All / Agency creatives / Owner creatives**, filters by brand and status, a detail view with the Meta ad copy (primary text, headline, description, button), the concept behind it, text editing, and PNG download.
+- **Generate**: pick a brand, then **Random** (Claude picks the angle from the brand kit) or **With a prompt** (your direction or extra info). Choose the method (**Pre-Sold**, **$100M Offers**, or **Mix**), how many (1 to 4), format (1:1, 4:5, 9:16), awareness stage, photo (one of the brand's photos, picked by Claude, or none) and Owner or Agency.
+
+### How a creative is made
+
+1. The server saves a placeholder row per creative and answers at once. The app shows "Generating…" and refreshes until it is done.
+2. In the background the server sends Claude the brand kit, the brand's photos and the request. Claude writes the creative with the chosen method:
+   - **Pre-Sold**: Perfect Client Clone, psychographic layer, one awareness stage per ad, Totem Pole tier, Specificity Ladder, pain line / status line, don't lead with the tool.
+   - **$100M Offers**: starving-crowd check, one value-equation term per ad, the stack built from what the brand actually delivers, enhancers only with a basis in the kit, MAGIC naming.
+   Both keep the house rules: only claims that are in the brand kit, the emoji primary-text format, and anything unverified listed under "Check before running".
+3. The photo is one of the brand's uploaded images, or none for a text card. Photos are uploaded by people; nothing is AI-generated.
+4. The browser draws the card (headline with the accent payoff line, sub-line, checklist or service grid, CTA pill, logo) in the brand's colours and fonts. Text is drawn, not generated, so it is always spelled exactly. The finished PNG is saved to storage automatically.
+
+## Setup
+
+You need three things: a Supabase project, an Anthropic API key, and somewhere to host the app (Vercel is the easiest).
+
+### 1. Supabase
+
+1. Open your project at supabase.com (yours is `https://rwdpjjnivobwhfeibbzj.supabase.co`).
+2. **SQL Editor → New query**, paste the whole of `supabase/schema.sql`, click **Run**. This creates the `brands` and `creatives` tables and two public storage buckets (`brand-assets`, `creatives`). Running it again is safe.
+3. **Project Settings → API Keys**: copy the **service_role** key (or create a secret key that starts with `sb_secret_`). This is `SUPABASE_SERVICE_KEY` below. Never put it in browser code.
+
+### 2. Anthropic API key
+
+console.anthropic.com → **API Keys → Create Key**. Add some credit under **Billing**. This is `ANTHROPIC_API_KEY`.
+
+### 3. Environment variables
+
+| Variable | What it is |
+|---|---|
+| `SUPABASE_URL` | `https://rwdpjjnivobwhfeibbzj.supabase.co` |
+| `SUPABASE_SERVICE_KEY` | the service_role / secret key from step 1 |
+| `ANTHROPIC_API_KEY` | the key from step 2 |
+| `APP_PASSWORD` | a password you make up; everyone who uses the app signs in with it |
+| `CLAUDE_MODEL` | optional, default `claude-opus-5-5` |
+| `CLAUDE_EFFORT` | optional, default `high` (`medium` is faster and cheaper) |
+
+`.env.example` lists them all.
+
+### 4a. Run it on your computer
+
+Needs Node.js 20 or newer.
+
+```
+npm install
+cp .env.example .env.local     # then fill in the values
+npm run dev                     # http://localhost:3000
+```
+
+### 4b. Put it online with Vercel
+
+1. Push this folder to a GitHub repository.
+2. vercel.com → **Add New → Project** → import the repository. Framework is detected as Next.js; leave the build settings as they are.
+3. Under **Environment Variables**, add the variables from step 3.
+4. Click **Deploy**. Open the URL, sign in with `APP_PASSWORD`.
+
+Generating one creative takes about one to two minutes, and runs after the request has answered. The generate route asks for up to 300 seconds (`maxDuration`). Vercel allows that with Fluid Compute, which is on by default for new projects. On another host, run it as a normal Node server (`npm run build && npm start`), which has no time limit.
+
+## API (used by the app)
+
+All routes need the sign-in cookie. Errors come back as `{"error": "…"}`.
+
+| Method | Path | Body / query | Returns |
+|---|---|---|---|
+| GET | `/api/brands` | | `{brands}` |
+| POST | `/api/brands` | brand object (with `id` to update) | `{brand}` |
+| POST | `/api/brands/delete` | `{id}` (also deletes its creatives) | `{ok}` |
+| POST | `/api/upload` | multipart `file`, `folder` | `{url}` |
+| POST | `/api/analyze-website` | `{url}` | `{suggestions}` |
+| GET | `/api/creatives` | `?brand_id=&source=agency\|owner&status=` | `{creatives}` |
+| POST | `/api/creatives/update` | `{id, spec?, ad_copy?, concept?, rendered_url?}` | `{creative}` |
+| POST | `/api/creatives/delete` | `{id}` | `{ok}` |
+| POST | `/api/generate` | `{brand_id, mode: random\|prompt, prompt, count 1-4, format, photo_source: brand\|none, stage, method: presold\|100m\|mix, source: agency\|owner, created_by}` | `{creatives}` (the placeholder rows) |
+
+## Changing things
+
+- **The methods and the card/copy rules**: `prompts/` (`00-intro.md`, `method-presold.md`, `method-100m-offers.md`, `design-rules.md`). They are bundled at build time, so restart `npm run dev` or redeploy after editing.
+- **Model and effort**: the `CLAUDE_MODEL` and `CLAUDE_EFFORT` variables.
+- **Card look**: `lib/client/renderCard.js`.
+- **Claude call**: `lib/server/claude.js`. It uses structured outputs, so Claude's answer always matches the creative schema in `lib/server/generate.js`, and server-side refusal fallbacks, so a request the safety filter declines is retried on a fallback model instead of failing.
+
+## Cost per creative (rough)
+
+One Claude call: a few thousand tokens in (more with brand photos attached), one to two thousand out. Auto-fill from website is one more call.
+
+## Files
+
+```
+app/                    pages (/, /login) and API routes (app/api/*)
+components/             the React UI
+lib/server/             Claude, Supabase, generation, auth (server only)
+lib/client/             browser API calls, settings, card renderer
+prompts/                Pre-Sold and $100M Offers methods, card and copy rules
+supabase/schema.sql     tables and buckets
+middleware.js           password protection for every page and API route
+```
