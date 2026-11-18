@@ -12,8 +12,15 @@ const EMPTY = {
   colors: { deep: '#0B0B0C', light: '#F7F7F2', accent: '#7C5CFF', primary: '#0B0B0C', secondary: '#F7F7F2' },
   fonts: { heading: 'Montserrat', body: 'Nunito Sans' },
   logo_url: '', logo_mono: false, brand_images: [], social: { facebook: '', instagram: '' },
-  agency_name: '', website_summary: '',
+  agency_name: '', website_summary: '', email: '', audiences: {},
 };
+
+// Who an ad speaks to. The builder's Owner / Agency choice picks one of these.
+export const AUDIENCES = [
+  ['owner', 'Business owners', 'Direct clients: they talk about calls, customers, bookings and jobs.'],
+  ['agency', 'Agency owners', 'Agencies: they talk about clients, builds, delivery and capacity.'],
+];
+const AUD_EMPTY = { what_we_do: '', proof_line: '', bonus_pill: '', bonus_text: '', cta_note: '', allowed_claims: [] };
 
 const COLOR_FIELDS = [
   ['deep', 'Background (dark)', 'Card ground, and text on light cards'],
@@ -25,7 +32,7 @@ const COLOR_FIELDS = [
 
 const REQUIRED = ['name', 'website', 'industry', 'description', 'target_audience', 'default_cta'];
 const FIELD_TAB = { name: 'details', website: 'details', industry: 'details', description: 'details', target_audience: 'offer', default_cta: 'offer' };
-const TABS = [['kit', 'Brand kit'], ['details', 'Details'], ['offer', 'Audience & offer'], ['voice', 'Voice & rules'], ['photos', 'Photos']];
+const TABS = [['kit', 'Brand kit'], ['details', 'Details'], ['offer', 'Audience & offer'], ['audiences', 'Ad audiences'], ['voice', 'Voice & rules'], ['photos', 'Photos']];
 
 const toLines = (arr) => (arr || []).join('\n');
 const fromLines = (s) => s.split('\n').map((x) => x.trim()).filter(Boolean);
@@ -49,6 +56,11 @@ export default function BrandForm({ brand, onCancel, onSaved, onDelete, onGenera
     services: toLines(brand.services), differentiators: toLines(brand.differentiators), proof_points: toLines(brand.proof_points),
     guarantees: toLines(brand.guarantees), banned_phrases: toLines(brand.banned_phrases),
   }));
+  const [aud, setAud] = useState(() => Object.fromEntries(AUDIENCES.map(([k]) => {
+    const a = { ...AUD_EMPTY, ...((brand.audiences || {})[k] || {}) };
+    return [k, { ...a, allowed_claims: toLines(a.allowed_claims) }];
+  })));
+  const setAudField = (k, f, v) => setAud((x) => ({ ...x, [k]: { ...x[k], [f]: v } }));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
@@ -134,6 +146,7 @@ export default function BrandForm({ brand, onCancel, onSaved, onDelete, onGenera
     try {
       const payload = { ...b };
       Object.keys(lists).forEach((k) => { payload[k] = fromLines(lists[k]); });
+      payload.audiences = Object.fromEntries(AUDIENCES.map(([k]) => [k, { ...aud[k], allowed_claims: fromLines(aud[k].allowed_claims) }]));
       ['created_at', 'updated_at'].forEach((k) => delete payload[k]);
       const saved = await api.saveBrand(payload);
       toast(`${b.name} saved`);
@@ -250,7 +263,10 @@ export default function BrandForm({ brand, onCancel, onSaved, onDelete, onGenera
               {F({ k: 'service_area', label: 'Location / service area', placeholder: 'Phoenix metro, AZ' })}
             </div>
             {F({ k: 'description', label: 'What the business does', textarea: true, placeholder: 'One or two sentences in plain words' })}
-            {F({ k: 'agency_name', label: 'Managing agency', hint: 'Optional: the agency that runs this brand\'s ads' })}
+            <div className="grid-2">
+              {F({ k: 'email', label: 'Email shown on ads', placeholder: 'hello@example.com', hint: 'Optional: printed under the wordmark on device cards' })}
+              {F({ k: 'agency_name', label: 'Managing agency', hint: 'Optional: the agency that runs this brand\'s ads' })}
+            </div>
           </fieldset>
           <fieldset>
             <legend>Social</legend>
@@ -278,6 +294,31 @@ export default function BrandForm({ brand, onCancel, onSaved, onDelete, onGenera
             </div>
             {F({ k: 'default_cta', label: 'Default CTA button', placeholder: 'Book a free strategy call' })}
           </fieldset>
+        </div>
+      )}
+
+      {tab === 'audiences' && (
+        <div className="tab-body">
+          <p className="muted small" style={{ marginTop: 0 }}>When you create an ad you choose Business owners or Agency owners. Claude uses that audience's details below, and only the claims you list. Leave an audience empty to fall back to the Audience & offer tab.</p>
+          {AUDIENCES.map(([k, label, hint]) => (
+            <fieldset key={k}>
+              <legend>{label}</legend>
+              <p className="muted small" style={{ margin: '0 0 10px' }}>{hint}</p>
+              <label className="field"><span>What you do for them</span>
+                <textarea rows={2} value={aud[k].what_we_do} onChange={(e) => setAudField(k, 'what_we_do', e.target.value)}
+                  placeholder={k === 'agency' ? 'White-label build team: you send the build, we build it, QA it and hand it back under your brand.' : 'We build the automations and workflows inside your own account.'} /></label>
+              <div className="grid-2">
+                <label className="field"><span>Proof line</span><input value={aud[k].proof_line} onChange={(e) => setAudField(k, 'proof_line', e.target.value)} placeholder="Trusted by 200+ U.S.-based agencies" /><small>Shown with a small shield icon. Only proof you can back.</small></label>
+                <label className="field"><span>Note under the button</span><input value={aud[k].cta_note} onChange={(e) => setAudField(k, 'cta_note', e.target.value)} placeholder="Book the call, get a written scope. Free." /><small>What they get from the next step</small></label>
+                <label className="field"><span>Offer pill (one line)</span><input value={aud[k].bonus_pill} onChange={(e) => setAudField(k, 'bonus_pill', e.target.value)} placeholder="Show up to your call. Get $130 in free extras." /><small>Optional. Top-right of the card.</small></label>
+                <label className="field"><span>Offer in full</span><input value={aud[k].bonus_text} onChange={(e) => setAudField(k, 'bonus_text', e.target.value)} placeholder="Show up and get an 8-point QA check ($80 value) + A2P filing ($50 value)." /><small>Optional. Used word for word in the caption's 🎁 line.</small></label>
+              </div>
+              <label className="field"><span>Claims you are allowed to make</span>
+                <textarea rows={5} value={aud[k].allowed_claims} onChange={(e) => setAudField(k, 'allowed_claims', e.target.value)}
+                  placeholder={k === 'agency' ? 'Written scope and committed timeline before anything is built\n8-point pre-delivery QA\nDelivered under your brand' : 'A missed call gets a text back in seconds\nNew leads get a follow-up sequence until they reply or book'} />
+                <small>One per line. Claude makes no other factual claims for this audience.</small></label>
+            </fieldset>
+          ))}
         </div>
       )}
 

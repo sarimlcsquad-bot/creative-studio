@@ -55,6 +55,11 @@ create table if not exists public.creatives (
   rendered_url   text            -- final PNG saved by the web app
 );
 
+-- Added later: the email shown on ads, and per-audience details (business owners / agency owners).
+-- Safe to re-run on an existing database.
+alter table public.brands add column if not exists email text not null default '';
+alter table public.brands add column if not exists audiences jsonb not null default '{}'::jsonb;
+
 create index if not exists creatives_brand_idx on public.creatives (brand_id, created_at desc);
 create index if not exists creatives_source_idx on public.creatives (source, created_at desc);
 

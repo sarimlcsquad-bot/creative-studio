@@ -18,3 +18,9 @@ export const IconSpark = () => (
 export const IconPlus = () => (
   <svg {...base} width={16} height={16}><path d="M12 5v14M5 12h14" /></svg>
 );
+export const IconStar = ({ filled }) => (
+  <svg {...base} width={18} height={18} fill={filled ? 'currentColor' : 'none'}><path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9L12 3.5Z" /></svg>
+);
+export const IconTrash = () => (
+  <svg {...base} width={18} height={18}><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" /></svg>
+);

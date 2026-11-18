@@ -1,6 +1,7 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
 import Modal from './Modal.jsx';
+import { IconStar } from './Icons.jsx';
 import { renderCard, FORMATS } from '@/lib/client/renderCard';
 import { editorDoc, toStoredHtml } from '@/lib/client/renderHtml';
 import { api } from '@/lib/client/api';
@@ -45,7 +46,9 @@ function HtmlEditor({ creative, brand, frameRef }) {
   );
 }
 
-export default function CreativeDetail({ creative, brand, onClose, onDelete, onSaved }) {
+export default function CreativeDetail({ creative, brand, onClose, onDelete, onFavorite, onSaved }) {
+  const [confirmDel, setConfirmDel] = useState(false);
+  const fav = !!creative.concept?.favorite;
   const ref = useRef(null);
   const [editing, setEditing] = useState(false);
   const [spec, setSpec] = useState(creative.spec || { blocks: [] });
@@ -100,7 +103,13 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
   return (
     <Modal wide title={`${brand?.name || 'Creative'} · ${creative.format}`} onClose={onClose}
       footer={<>
-        <button className="btn ghost danger" onClick={onDelete}>Delete</button>
+        {confirmDel
+          ? <span className="row-gap center"><span className="small">Delete this creative?</span>
+              <button className="btn ghost sm" onClick={() => setConfirmDel(false)}>Keep it</button>
+              <button className="btn danger-fill sm" onClick={onDelete}>Delete</button></span>
+          : <button className="btn ghost danger" onClick={() => setConfirmDel(true)}>Delete</button>}
+        <button className={`btn ghost fav-btn ${fav ? 'on' : ''}`} onClick={() => onFavorite(!fav)} aria-pressed={fav}>
+          <IconStar filled={fav} /> {fav ? 'Favorite' : 'Add to favorites'}</button>
         <span className="spacer" />
         {editing
           ? <><button className="btn ghost" onClick={() => { setSpec(creative.spec); setEditing(false); }}>Cancel</button>
@@ -144,7 +153,7 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
           ) : (
             <>
               <div className="chips">
-                <span className={`chip src-${creative.source}`}>{creative.source === 'agency' ? 'Agency' : 'Owner'}</span>
+                <span className={`chip src-${creative.source}`}>{creative.source === 'agency' ? 'Agency owners' : 'Business owners'}</span>
                 {(c.method || creative.method) && <span className="chip method">{METHOD_LABEL[c.method || creative.method]}</span>}
                 {c.stage && <span className="chip">{STAGE_LABEL[c.stage] || c.stage}</span>}
                 {c.psychographic_layer && c.psychographic_layer !== 'n/a' && <span className="chip">{c.psychographic_layer}</span>}
@@ -153,6 +162,12 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
               </div>
               {c.hook && <p><strong>Hook:</strong> {c.hook}</p>}
               {c.layout_name && <p className="small muted">Layout: {c.layout_name}</p>}
+              {c.device && (
+                <p className="small"><strong>Chosen look:</strong> {c.device} {c.device_side === 'below' ? 'under the headline' : `on the ${c.device_side}`}
+                  {c.background_hex && <> on <span className="wz-swatch inline" style={{ background: c.background_hex }} /> {c.background_hex}</>}
+                  {c.screen?.app_title && <>, screen “{c.screen.app_title}”</>}</p>
+              )}
+              {c.story_9x16_note && <p className="small muted">9:16 note: {c.story_9x16_note}</p>}
               {c.angle && <p><strong>Angle:</strong> {c.angle}</p>}
               {c.specific_object && <p><strong>Specific object:</strong> {c.specific_object}</p>}
               {c.magic_name && <p><strong>Offer name (needs approval):</strong> {c.magic_name}</p>}
@@ -163,9 +178,10 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onS
               <CopyField label="Headline" value={copy.headline} />
               <CopyField label="Description" value={copy.description} />
               {copy.cta_button && <p className="small"><strong>Meta button:</strong> {copy.cta_button.replace(/_/g, ' ')}</p>}
-              {(c.compliance_notes || []).length > 0 && (
-                <div className="notice"><strong>Check before running:</strong><ul>{c.compliance_notes.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
+              {[...(c.flags || []), ...(c.compliance_notes || [])].length > 0 && (
+                <div className="notice"><strong>Check before running:</strong><ul>{[...new Set([...(c.flags || []), ...(c.compliance_notes || [])])].map((n, i) => <li key={i}>{n}</li>)}</ul></div>
               )}
+              {(c.claims_used || []).length > 0 && <details className="small"><summary>Claims used from the brand kit</summary><ul>{c.claims_used.map((n, i) => <li key={i}>{n}</li>)}</ul></details>}
               {creative.prompt && <p className="small muted">Prompt: “{creative.prompt}”</p>}
               {c.image_error && <div className="notice"><strong>AI image failed, so the design has no image:</strong> {c.image_error}</div>}
               {creative.photo_prompt && <details className="small"><summary>{c.visual_type && c.visual_type !== 'photo' && c.visual_type !== 'n/a' ? 'Image prompt' : 'Photo prompt'}</summary><p className="muted">{creative.photo_prompt}</p></details>}

@@ -1,7 +1,8 @@
 'use client';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { renderCard, renderToBlob } from '@/lib/client/renderCard';
 import { api } from '@/lib/client/api';
+import { IconStar, IconTrash } from './Icons.jsx';
 
 export const METHOD_LABEL = { presold: 'Pre-Sold', '100m': '$100M Offers', mix: 'Mix' };
 const STAGE_LABEL = { unaware: 'Unaware', problem: 'Problem-aware', solution: 'Solution-aware', product: 'Product-aware', most: 'Most-aware', auto: 'Auto' };
@@ -11,21 +12,25 @@ const savingRenders = new Set();
 
 // Saves the rendered PNG back to storage once, so the creative has a real file
 // (for downloads elsewhere, Meta uploads, sharing).
+// Bump RENDER_FOLDER when rendering changes, so saved PNGs made before the change are redone.
+const RENDER_FOLDER = 'renders/r2';
 async function persistRender(creative, brand) {
-  if (creative.rendered_url || savingRenders.has(creative.id)) return;
+  if (creative.rendered_url?.includes(`/${RENDER_FOLDER}/`) || savingRenders.has(creative.id)) return;
   savingRenders.add(creative.id);
   try {
     const blob = await renderToBlob(creative, brand);
     if (!blob) return;
     const file = new File([blob], `${creative.id}.png`, { type: 'image/png' });
-    const url = await api.upload(file, `renders/${creative.brand_id}`);
+    const url = await api.upload(file, `${RENDER_FOLDER}/${creative.brand_id}`);
     await api.updateCreative({ id: creative.id, rendered_url: url });
   } catch { /* retried next time it is shown */ }
   finally { savingRenders.delete(creative.id); }
 }
 
-export default function CreativeCard({ creative, brand, onOpen }) {
+export default function CreativeCard({ creative, brand, onOpen, onFavorite, onDelete }) {
   const ref = useRef(null);
+  const [confirming, setConfirming] = useState(false);
+  const fav = !!creative.concept?.favorite;
   useEffect(() => {
     if (creative.status !== 'ready' || !ref.current) return;
     renderCard(ref.current, creative, brand).then(() => persistRender(creative, brand)).catch(() => {});
@@ -36,7 +41,24 @@ export default function CreativeCard({ creative, brand, onOpen }) {
   const method = creative.concept?.method || creative.method;
 
   return (
-    <article className={`creative-card ${creative.status}`}>
+    <article className={`creative-card ${creative.status} ${fav ? 'fav' : ''}`}>
+      <div className="card-actions">
+        {creative.status !== 'generating' && (
+          <button className={`icon-btn star ${fav ? 'on' : ''}`} onClick={() => onFavorite(!fav)} aria-pressed={fav}
+            aria-label={fav ? 'Remove from favorites' : 'Add to favorites'} title={fav ? 'Remove from favorites' : 'Add to favorites'}><IconStar filled={fav} /></button>
+        )}
+        <button className="icon-btn" onClick={() => setConfirming(true)} aria-label="Delete creative" title="Delete"><IconTrash /></button>
+      </div>
+      {confirming && (
+        <div className="card-confirm" role="alertdialog" aria-label="Delete this creative?">
+          <strong>Delete this creative?</strong>
+          <span>This can't be undone.</span>
+          <div className="row-gap">
+            <button className="btn ghost sm" onClick={() => setConfirming(false)} autoFocus>Keep it</button>
+            <button className="btn danger-fill sm" onClick={() => { setConfirming(false); onDelete(); }}>Delete</button>
+          </div>
+        </div>
+      )}
       <button className="creative-thumb" onClick={onOpen} disabled={creative.status === 'generating'} aria-label="Open creative">
         {creative.status === 'ready' && <canvas ref={ref} />}
         {creative.status === 'generating' && (
@@ -48,7 +70,7 @@ export default function CreativeCard({ creative, brand, onOpen }) {
       </button>
       <div className="creative-meta">
         <div className="chips">
-          <span className={`chip src-${creative.source}`}>{creative.source === 'agency' ? 'Agency' : 'Owner'}</span>
+          <span className={`chip src-${creative.source}`}>{creative.source === 'agency' ? 'Agency owners' : 'Business owners'}</span>
           {method && <span className="chip method">{METHOD_LABEL[method] || method}</span>}
           {stage && <span className="chip">{STAGE_LABEL[stage] || stage}</span>}
           <span className="chip">{creative.format}</span>

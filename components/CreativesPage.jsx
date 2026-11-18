@@ -4,18 +4,19 @@ import { api } from '@/lib/client/api';
 import CreativeCard from './CreativeCard.jsx';
 import CreativeDetail from './CreativeDetail.jsx';
 import { toast } from './Toasts.jsx';
-import { IconSpark } from './Icons.jsx';
+import { IconSpark, IconStar } from './Icons.jsx';
 
 const SUBTABS = [
   ['all', 'All creatives'],
-  ['agency', 'Agency creatives'],
-  ['owner', 'Owner creatives'],
+  ['agency', 'For agency owners'],
+  ['owner', 'For business owners'],
 ];
 
 export default function CreativesPage({ brands, version, onGenerate, onGoBrands }) {
   const [sub, setSub] = useState('all');
   const [brandId, setBrandId] = useState('');
   const [status, setStatus] = useState('');
+  const [favOnly, setFavOnly] = useState(false);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(null);
@@ -47,12 +48,20 @@ export default function CreativesPage({ brands, version, onGenerate, onGoBrands 
     owner: items.filter((c) => c.source === 'owner').length,
   }), [items]);
 
-  const shown = items.filter((c) => !status || c.status === status);
+  const shown = items.filter((c) => (!status || c.status === status) && (!favOnly || c.concept?.favorite));
+  const favCount = items.filter((c) => c.concept?.favorite).length;
 
   const remove = async (c) => {
-    if (!window.confirm('Delete this creative?')) return;
-    try { await api.deleteCreative(c.id); setOpen(null); load(true); toast('Creative deleted'); }
-    catch (e) { toast(e.message, 'error'); }
+    setItems((list) => list.filter((x) => x.id !== c.id));
+    try { await api.deleteCreative(c.id); setOpen(null); toast('Creative deleted'); }
+    catch (e) { toast(e.message, 'error'); load(true); }
+  };
+  const favorite = async (c, on) => {
+    const patch = (x) => (x.id === c.id ? { ...x, concept: { ...(x.concept || {}), favorite: on } } : x);
+    setItems((list) => list.map(patch));
+    setOpen((o) => (o ? patch(o) : o));
+    try { await api.favoriteCreative(c.id, on); toast(on ? 'Added to favorites' : 'Removed from favorites'); }
+    catch (e) { toast(e.message, 'error'); load(true); }
   };
 
   if (!brands.length && !loading) {
@@ -96,27 +105,31 @@ export default function CreativesPage({ brands, version, onGenerate, onGoBrands 
           <option value="generating">Generating</option>
           <option value="failed">Failed</option>
         </select>
+        <button className={`btn sm fav-filter ${favOnly ? 'on' : ''}`} onClick={() => setFavOnly((v) => !v)} aria-pressed={favOnly}>
+          <IconStar filled={favOnly} /> Favorites <span className="count">{favCount}</span>
+        </button>
         <button className="btn ghost sm" onClick={() => load()}>Refresh</button>
       </div>
 
       {loading && !items.length ? <div className="empty">Loading creatives…</div> : null}
       {!loading && !shown.length ? (
         <div className="empty">
-          <h3>No creatives here yet</h3>
-          <p>Generate a random creative for a brand, or describe what you want in a prompt.</p>
+          <h3>{favOnly ? 'No favorites here yet' : 'No creatives here yet'}</h3>
+          <p>{favOnly ? 'Tap the star on a creative to add it to your favorites.' : 'Generate a random creative for a brand, or describe what you want in a prompt.'}</p>
           <button className="btn primary" onClick={onGenerate}><IconSpark /> Generate</button>
         </div>
       ) : null}
 
       <div className="creative-grid">
         {shown.map((c) => (
-          <CreativeCard key={c.id} creative={c} brand={brandById[c.brand_id]} onOpen={() => setOpen(c)} />
+          <CreativeCard key={c.id} creative={c} brand={brandById[c.brand_id]} onOpen={() => setOpen(c)}
+            onFavorite={(on) => favorite(c, on)} onDelete={() => remove(c)} />
         ))}
       </div>
 
       {open && (
         <CreativeDetail creative={open} brand={brandById[open.brand_id]} onClose={() => setOpen(null)}
-          onDelete={() => remove(open)} onSaved={() => load(true)} />
+          onDelete={() => remove(open)} onFavorite={(on) => favorite(open, on)} onSaved={() => load(true)} />
       )}
     </section>
   );

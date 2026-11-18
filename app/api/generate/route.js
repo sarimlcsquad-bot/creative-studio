@@ -15,10 +15,10 @@ export const POST = handler(async (request) => {
   const jobs = planJobs(req, brand);
   const rows = check(await db().from('creatives').insert(jobs.map((j) => ({
     brand_id: brand.id, source: req.source, created_by: req.created_by, mode: req.mode, prompt: req.prompt,
-    format: req.format, photo_source: j.photo_source, stage: req.stage, method: j.method, status: 'generating',
+    format: j.format, photo_source: j.photo_source, stage: req.stage, method: j.method, status: 'generating',
   }))).select('*'));
-  const { headlines, layouts } = await recentFor(brand.id);
+  const { headlines, layouts, backgrounds } = await recentFor(brand.id);
   // Answer the browser now; write the creatives in the background, in parallel.
-  after(() => Promise.all(rows.map((row, i) => runJob({ creativeId: row.id, brand, req, job: jobs[i], headlines, layouts }))));
+  after(() => Promise.all(rows.map((row, i) => runJob({ creativeId: row.id, brand, req, job: jobs[i], headlines, layouts, backgrounds }))));
   return ok({ creatives: rows });
 });

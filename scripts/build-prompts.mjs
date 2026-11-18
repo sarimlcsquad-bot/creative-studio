@@ -6,12 +6,13 @@ const read = (n) => readFileSync(new URL(`../prompts/${n}`, import.meta.url), 'u
 const intro = read('00-intro.md');
 const tail = read('copy-and-output.md');
 const methods = { presold: read('method-presold.md'), '100m': read('method-100m-offers.md') };
-const designs = { classic: read('design-classic.md'), free: read('design-free.md') };
+const designs = { classic: read('design-classic.md'), free: read('design-free.md'), device: read('design-device.md') };
 const out = {};
 for (const [m, method] of Object.entries(methods)) {
   for (const [d, design] of Object.entries(designs)) out[`${m}:${d}`] = [intro, method, design, tail].join('\n\n');
 }
 for (const [m, method] of Object.entries(methods)) out[`method:${m}`] = method;
 out.copy = tail;
+out.core = intro;
 writeFileSync(new URL('../lib/server/prompts.json', import.meta.url), JSON.stringify(out, null, 2));
 console.log('prompts bundled');
