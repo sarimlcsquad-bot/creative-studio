@@ -3,7 +3,7 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { api } from '@/lib/client/api';
 import { toast } from './Toasts.jsx';
 import { IconSpark } from './Icons.jsx';
-import { buildPanelCard, PANEL_TYPES, THEMES, THEME_NAMES } from '@/lib/panelTemplate';
+import { buildPanelCard, PANEL_TYPES, THEMES, THEME_NAMES, DEVICES, SCREENS, LAYOUTS } from '@/lib/panelTemplate';
 
 const STAGES = [
   ['auto', 'Let Claude choose'],
@@ -789,12 +789,15 @@ function CardPreview({ brand, content, screen, photo }) {
 const PANEL_LABEL = {
   timeline: 'Timeline', checklist: 'Checklist', steps: 'Numbered steps', compare_table: 'Before and after table', compare_cards: 'Today vs with us',
   flow: 'Flow into one result', calendar: 'Two calendars', path: 'Broken vs connected path', tiles: 'Four tiles', columns: 'Three columns',
-  clock: 'Clock and reminders', seesaw: 'See-saw', funnel: 'Two funnels',
+  clock: 'Clock and reminders', seesaw: 'See-saw', funnel: 'Two funnels', device: 'Device screen',
 };
+const SCREEN_LABEL = { list: 'List', calendar: 'Calendar', notifications: 'Alerts', board: 'Board', roster: 'Team' };
+const LAYOUT_LABEL = { stack: 'Centred', split_right: 'Device right', split_left: 'Device left' };
+const themeLabel = (t) => `${t[0].toUpperCase() + t.slice(1)}${THEMES[t]?.solid ? ' (solid)' : ''}`;
 
 function useBrandFonts(brand) {
   useEffect(() => {
-    const fams = [...new Set([brand?.fonts?.heading || 'Montserrat', brand?.fonts?.body || 'Nunito Sans'])];
+    const fams = [...new Set([brand?.fonts?.heading || 'Montserrat', brand?.fonts?.body || 'Nunito Sans', 'Barlow Condensed'])];
     const id = `cs-fonts-${fams.join('-').replace(/\W+/g, '')}`;
     if (document.getElementById(id)) return;
     const l = document.createElement('link');
@@ -872,9 +875,25 @@ function PanelStep({ v, tab, setPanel, upd, brand, content, format, busy, editin
                 <select value={p.type} onChange={(e) => setPanel(v.panelAt, { type: e.target.value })}>{Object.keys(PANEL_TYPES).map((t) => <option key={t} value={t}>{PANEL_LABEL[t] || t}</option>)}</select>
               </label>
               <label className="field"><span>Background</span>
-                <select value={p.theme} onChange={(e) => setPanel(v.panelAt, { theme: e.target.value })}>{THEME_NAMES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}</select>
+                <select value={p.theme} onChange={(e) => setPanel(v.panelAt, { theme: e.target.value })}>{THEME_NAMES.map((t) => <option key={t} value={t}>{themeLabel(t)}</option>)}</select>
               </label>
             </div>
+            {p.type === 'device' && (
+              <div className="grid-2">
+                <label className="field"><span>Device</span>
+                  <select value={p.device && p.device !== 'none' ? p.device : 'phone'} onChange={(e) => setPanel(v.panelAt, { device: e.target.value, ...(e.target.value === 'laptop' ? { layout: 'stack' } : {}) })}>{DEVICES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}</select>
+                </label>
+                <label className="field"><span>Screen</span>
+                  <select value={p.screen && p.screen !== 'none' ? p.screen : 'list'} onChange={(e) => setPanel(v.panelAt, { screen: e.target.value })}>{Object.keys(SCREENS).map((t) => <option key={t} value={t}>{SCREEN_LABEL[t] || t}</option>)}</select>
+                </label>
+                <label className="field"><span>Layout</span>
+                  <select value={p.layout || 'stack'} onChange={(e) => setPanel(v.panelAt, { layout: e.target.value })}>{LAYOUTS.filter((t) => p.device !== 'laptop' || t === 'stack').map((t) => <option key={t} value={t}>{LAYOUT_LABEL[t] || t}</option>)}</select>
+                </label>
+              </div>
+            )}
+            <label className="field"><span>Headline font</span>
+              <select value={p.font || 'brand'} onChange={(e) => setPanel(v.panelAt, { font: e.target.value })}><option value="brand">Brand font</option><option value="condensed">Condensed bold</option></select>
+            </label>
             <label className="field"><span>Heading</span><input value={p.heading || ''} onChange={(e) => setPanel(v.panelAt, { heading: e.target.value })} /></label>
             <div className="grid-2">
               <label className="field"><span>Left label</span><input value={p.left_label || ''} onChange={(e) => setPanel(v.panelAt, { left_label: e.target.value })} /></label>

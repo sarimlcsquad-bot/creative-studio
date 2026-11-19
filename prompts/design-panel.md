@@ -5,13 +5,13 @@ The app draws this card itself, the same way every time, in the house reference 
 ## What you decide
 
 ### 1. The headline (`headline_lines`, `accent_words`)
-- 3 lines, about 5 to 9 words in all, each line about 9 to 18 characters. Break at natural phrase boundaries.
-- The last line is the payoff and is shown in the accent colour, so end on the twist, the pain or the outcome (for example "Build shipped. / GoHighLevel / edits still yours?" or "Quote sent. / No GoHighLevel / follow-up?").
-- `accent_words`: the words of the last line.
+- 2 to 4 lines, about 5 to 10 words in all. Break at natural phrase boundaries. With the brand font keep lines to about 9 to 18 characters; with the condensed font lines can be up to about 24.
+- End on the twist, the pain or the outcome (for example "Build shipped. / GoHighLevel / edits still yours?" or "New niche. / No GoHighLevel snapshot?").
+- `accent_words`: 1 to 4 consecutive payoff words, shown in the accent colour. Usually the end ("snapshot?", "queue full?"), but they can sit anywhere ("without the hiring headache", "Snapshot-ready"). The app may re-break lines that are too long.
 - When the request gives a hook, use its words exactly; you only choose the line breaks.
 
 ### 2. The line under it (`subhead`)
-- One or two very short sentences, at most about 16 words, that name the pain plainly and then the fix ("Forward the change requests. We make them under your brand."). When the request gives a body line, return it word for word.
+- One or two very short sentences, at most about 12 words, that name the pain plainly and then the fix ("Forward the change requests. We make them under your brand."). When the request gives a body line, return it word for word.
 
 ### 3. The diagram (`panel`) and the ground (`theme`)
 - The diagram proves the headline in one glance: the pain and the fix side by side, a before and after, or the steps you take. Ordinary, specific details (a weekday, a time, a step name), never a list of features.
