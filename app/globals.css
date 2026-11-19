@@ -677,3 +677,18 @@ input, textarea, select { border-color: var(--field); border-radius: 10px; }
 .lt-bg input[type=range], .bg-shade input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
 .bg-photo-field { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 4px; }
 .bg-shade { display: flex; flex-direction: column; gap: 4px; }
+
+/* Editing a diagram or visual: the preview and the edit fields sit side by side, the preview stays in view. */
+.wz-prev-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.wz-visual.editing { grid-template-columns: minmax(0, 1fr) minmax(620px, 700px); }
+.wz-preview-col.with-edit { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 16px; align-items: start; }
+.wz-preview-col.with-edit .wz-prev-main { position: sticky; top: 0; }
+.wz-preview-col.with-edit .wz-screen-edit { max-height: calc(100vh - 340px); min-height: 240px; overflow-y: auto; }
+@media (max-width: 1280px) {
+  .wz-visual.editing { grid-template-columns: minmax(0, 1fr) minmax(560px, 600px); }
+  .wz-preview-col.with-edit { grid-template-columns: minmax(0, 260px) minmax(0, 1fr); }
+}
+@media (max-width: 1000px) {
+  .wz-visual.editing { grid-template-columns: 1fr; }
+  .wz-preview-col.with-edit { max-width: none; }
+}

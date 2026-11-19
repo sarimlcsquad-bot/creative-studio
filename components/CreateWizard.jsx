@@ -587,7 +587,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
           )}
 
           {step === 'assets' && isDevice && (
-            <div className="wz-body wz-visual">
+            <div className={`wz-body wz-visual${sc && editVisual ? ' editing' : ''}`}>
               <div className="wz-visual-list">
                 {isBusy(`${tab}:screens`) && v.screens.length === 0 && <Loading text="Claude is picking visuals for this hook…" />}
                 <div className="wz-vgrid" role="radiogroup" aria-label="Visuals">
@@ -605,10 +605,12 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
                   )}
                 </div>
               </div>
-              <aside className="wz-preview-col" aria-label="Preview">
+              <aside className={`wz-preview-col${sc && editVisual ? ' with-edit' : ''}`} aria-label="Preview">
+                <div className="wz-prev-main">
                 <span className="wz-mini-label">Preview</span>
                 <CardPreview brand={brand} content={v.content} screen={sc} />
                 {sc && <button className="link-btn" onClick={() => setEditVisual((e) => !e)}>{editVisual ? 'Done editing' : 'Edit this visual'}</button>}
+                </div>
                 {sc && editVisual && (
                   <div className="wz-screen-edit">
                     <label className="field"><span>Visual</span>
@@ -817,8 +819,11 @@ function PanelPreview({ brand, content, panel, format = '4:5', small = false }) 
   useEffect(() => {
     const fit = () => boxRef.current && setW(boxRef.current.clientWidth);
     fit();
+    // Refit when the column changes width too (opening the edit fields narrows it), not only on window resize.
+    const ro = typeof ResizeObserver !== 'undefined' && boxRef.current ? new ResizeObserver(fit) : null;
+    ro?.observe(boxRef.current);
     window.addEventListener('resize', fit);
-    return () => window.removeEventListener('resize', fit);
+    return () => { ro?.disconnect(); window.removeEventListener('resize', fit); };
   }, []);
   const fmt = format === '9:16' ? '9:16' : '4:5';
   const H = fmt === '9:16' ? 1920 : 1350;
@@ -881,7 +886,7 @@ function PanelStep({ v, tab, setPanel, upd, brand, content, format, busy, editin
   const rowsText = (rows) => (rows || []).map((r) => (r.b ? `${r.a} | ${r.b}` : r.a)).join('\n');
   const parseRows = (t) => lines(t).map((l) => { const [a, ...b] = l.split('|'); return { a: a.trim(), b: b.join('|').trim() }; });
   return (
-    <div className="wz-body wz-visual">
+    <div className={`wz-body wz-visual${p && editing ? ' editing' : ''}`}>
       <div className="wz-visual-list">
         {busy && v.panels.length === 0 && <Loading text="Claude is drawing diagram ideas for this hook…" />}
         <div className="wz-vgrid wz-pgrid" role="radiogroup" aria-label="Diagrams">
@@ -893,11 +898,13 @@ function PanelStep({ v, tab, setPanel, upd, brand, content, format, busy, editin
           ))}
         </div>
       </div>
-      <aside className="wz-preview-col" aria-label="Preview">
+      <aside className={`wz-preview-col${p && editing ? ' with-edit' : ''}`} aria-label="Preview">
+        <div className="wz-prev-main">
         <span className="wz-mini-label">Preview</span>
         {p ? <PanelPreview brand={brand} content={content} panel={p} format={format} /> : <p className="small muted">Pick a diagram to see the creative.</p>}
         {p && <BgPhotoField panel={p} onChange={(patch) => setPanel(v.panelAt, patch)} />}
         {p && <button className="link-btn" onClick={() => setEditing((e) => !e)}>{editing ? 'Done editing' : 'Edit this diagram'}</button>}
+        </div>
         {p && editing && (
           <div className="wz-screen-edit">
             <div className="grid-2">
