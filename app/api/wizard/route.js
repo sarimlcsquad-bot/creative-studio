@@ -1,7 +1,7 @@
 import { db, check } from '@/lib/server/supabase';
 import { aiImagesEnabled } from '@/lib/server/openai';
 import { handler, ok, isUuid } from '@/lib/server/http';
-import { suggestAngles, suggestAssets, suggestContent, suggestHooks, suggestScreens } from '@/lib/server/wizard';
+import { suggestAngles, suggestAssets, suggestContent, suggestHooks, suggestPanels, suggestScreens } from '@/lib/server/wizard';
 
 // One endpoint for the builder's suggestion steps. body.step picks the step.
 export const maxDuration = 300;
@@ -22,7 +22,7 @@ export const POST = handler(async (request) => {
   const notes = clip(b.notes, 1500);
   const history = Array.isArray(b.history) ? b.history.map((x) => clip(x, 1000)).slice(-8) : [];
   const source = b.source === 'agency' ? 'agency' : 'owner';
-  const chat = { direction, history, notes, source, device: b.design === 'device' || !b.design };
+  const chat = { direction, history, notes, source, device: b.design === 'device' || b.design === 'panel' || !b.design };
   const format = b.format === 'both' ? '4:5 and 9:16 (one of each)' : b.format;
 
   if (b.step === 'angles') return ok(await suggestAngles({ brand, method, stage: b.stage, avoid, howMany: Math.min(Math.max(parseInt(b.how_many, 10) || 5, 3), 12), ...chat }));
@@ -50,6 +50,11 @@ export const POST = handler(async (request) => {
     if (!clip(b.hook).trim()) throw new Error('Pick a hook first');
     const c = b.copy && typeof b.copy === 'object' ? { headline: clip(b.copy.headline, 300), support: clip(b.copy.support, 600) } : null;
     return ok(await suggestScreens({ brand, method, angle, prompt, hook: clip(b.hook, 300), copy: c, format, avoid, aiImages: aiImagesEnabled(), ...chat }));
+  }
+  if (b.step === 'panels') {
+    if (!clip(b.hook).trim()) throw new Error('Pick a hook first');
+    const c = b.copy && typeof b.copy === 'object' ? { headline: clip(b.copy.headline, 300), support: clip(b.copy.support, 600) } : null;
+    return ok(await suggestPanels({ brand, method, angle, prompt, hook: clip(b.hook, 300), copy: c, format, avoid, ...chat }));
   }
   throw new Error('Unknown step');
 });

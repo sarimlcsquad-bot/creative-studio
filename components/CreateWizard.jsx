@@ -1,8 +1,9 @@
 'use client';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { api } from '@/lib/client/api';
 import { toast } from './Toasts.jsx';
 import { IconSpark } from './Icons.jsx';
+import { buildPanelCard, PANEL_TYPES, THEMES, THEME_NAMES } from '@/lib/panelTemplate';
 
 const STAGES = [
   ['auto', 'Let Claude choose'],
@@ -76,10 +77,10 @@ function VariantTabs({ count, active, onPick, done, busyAt, title }) {
   );
 }
 
-const blankChats = () => ({ angles: [], hooks: [], content: [], assets: [], screens: [] });
+const blankChats = () => ({ angles: [], hooks: [], content: [], assets: [], screens: [], panels: [] });
 const blank = () => ({
   angles: [], angle: null, ownAngle: false, hooks: [], hook: '', content: null,
-  visual: '', ideas: [], ideaAt: -1, photoUrl: '', screens: [], screenAt: -1,
+  visual: '', ideas: [], ideaAt: -1, photoUrl: '', screens: [], screenAt: -1, panels: [], panelAt: -1,
   designNotes: '', chats: blankChats(), madeFor: {},
 });
 
@@ -91,7 +92,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const [method, setMethod] = useState('presold');
   const [stage, setStage] = useState('auto');
   const [format, setFormat] = useState('4:5');
-  const [design, setDesign] = useState('device');
+  const [design, setDesign] = useState('panel');
   const [count, setCount] = useState(1);
   const [source, setSource] = useState(''); // the ad is for business owners or agency owners
   const [aiImages, setAiImages] = useState(false);
@@ -116,8 +117,9 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const brand = brands.find((b) => b.id === brandId);
   const brandImages = (brand?.brand_images || []).filter((im) => /^https?:\/\//.test(im.url || ''));
   const isDevice = design === 'device';
+  const isPanel = design === 'panel';
   const steps = mode === 'random' ? ['setup', 'angle', 'hook', 'content', 'assets', 'generate'] : ['setup', 'hook', 'content', 'assets', 'generate'];
-  const LABEL = { setup: 'Setup', angle: 'Angle', hook: 'Hook', content: 'Content', assets: 'Visual', generate: 'Review' };
+  const LABEL = { setup: 'Setup', angle: 'Angle', hook: 'Hook', content: 'Content', assets: isPanel ? 'Diagram' : 'Visual', generate: 'Review' };
   const at = steps.indexOf(step);
   const total = count * (format === 'both' ? 2 : 1);
   const v = vs[tab] || blank();
@@ -197,6 +199,16 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
       upd(i, (y) => ({ screens: merge(y.screens, r, items), screenAt: r.action === 'add' ? y.screenAt : -1, chats: say(y.chats, 'screens', 'claude', r.reply), madeFor: { ...y.madeFor, screens: contentKey(y) } }));
     }
   };
+  const loadPanels = async (i, direction = '') => {
+    const x = vsRef.current[i];
+    const r = await ask(`${i}:panels`, {
+      step: 'panels', direction, notes: notes(), history: history(x.chats.panels, direction),
+      angle: mode === 'random' ? x.angle : null, prompt: mode === 'prompt' ? prompt : '', hook: x.hook,
+      copy: x.content ? { headline: x.content.headline, support: x.content.support } : null,
+      avoid: x.panels.map((s) => s.idea),
+    });
+    if (r) upd(i, (y) => ({ panels: merge(y.panels, r, r.panels), panelAt: r.action === 'add' ? y.panelAt : -1, chats: say(y.chats, 'panels', 'claude', r.reply), madeFor: { ...y.madeFor, panels: contentKey(y) } }));
+  };
   const loadIdeas = async (i, direction = '', forVisual) => {
     const x = vsRef.current[i];
     const r = await ask(`${i}:assets`, {
@@ -209,14 +221,14 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   };
 
   // ---- step checks ---------------------------------------------------------
-  const usesAiOf = (x) => !isDevice && (x.visual === 'ai' || x.visual === 'both');
-  const usesPhotoOf = (x) => !isDevice && (x.visual === 'photo' || x.visual === 'both');
+  const usesAiOf = (x) => !isDevice && !isPanel && (x.visual === 'ai' || x.visual === 'both');
+  const usesPhotoOf = (x) => !isDevice && !isPanel && (x.visual === 'photo' || x.visual === 'both');
   const okFor = {
     setup: () => !!brandId && !!source && (mode === 'random' || !!prompt.trim()),
     angle: (x) => !!x.angle?.title?.trim(),
     hook: (x) => !!x.hook.trim(),
     content: (x) => !!x.content?.headline?.trim(),
-    assets: (x) => (isDevice
+    assets: (x) => (isPanel ? !!x.panels[x.panelAt] : isDevice
       ? !!x.screens[x.screenAt]
       : x.visual === 'none' || ((usesPhotoOf(x) ? !!x.photoUrl : true) && (usesAiOf(x) ? !!x.ideas[x.ideaAt]?.prompt?.trim() : true))),
     generate: () => true,
@@ -249,7 +261,9 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
     }
     if (n === 'assets') {
       list.forEach((x, i) => {
-        if (isDevice) {
+        if (isPanel) {
+          if (x.madeFor.panels !== contentKey(x)) { upd(i, (y) => ({ panels: [], panelAt: -1, chats: { ...y.chats, panels: [] } })); loadPanels(i); }
+        } else if (isDevice) {
           if (x.madeFor.screens !== contentKey(x)) { upd(i, (y) => ({ screens: [], screenAt: -1, chats: { ...y.chats, screens: [] } })); loadScreens(i); }
         } else {
           const vis = x.visual || (aiImages && brandImages.length ? 'both' : aiImages ? 'ai' : brandImages.length ? 'photo' : 'none');
@@ -287,6 +301,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const setC = (k, val) => upd(tab, (y) => ({ content: { ...y.content, [k]: val } }));
   const setAd = (k, val) => upd(tab, (y) => ({ content: { ...y.content, ad_copy: { ...y.content.ad_copy, [k]: val } } }));
   const setScreen = (j, patch) => upd(tab, (y) => ({ screens: y.screens.map((s, k) => (k === j ? { ...s, ...patch } : s)) }));
+  const setPanel = (j, patch) => upd(tab, (y) => ({ panels: y.panels.map((s, k) => (k === j ? { ...s, ...patch } : s)) }));
   const setIdea = (j, patch) => upd(tab, (y) => ({ ideas: y.ideas.map((s, k) => (k === j ? { ...s, ...patch } : s)) }));
   const chooseVisual = (vis) => {
     upd(tab, { visual: vis });
@@ -321,7 +336,8 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
       },
       ad_copy: c.ad_copy, compliance_notes: c.compliance_notes, claims_used: c.claims_used || [], flags: c.flags || [],
       screen: isDevice && sc ? { ...sc, elements: lines(sc.elementsText) } : null,
-      visual: isDevice ? 'none' : x.visual || 'none', photo_url: usesPhotoOf(x) ? x.photoUrl : '',
+      panel: isPanel ? x.panels[x.panelAt] || null : null,
+      visual: isDevice || isPanel ? 'none' : x.visual || 'none', photo_url: usesPhotoOf(x) ? x.photoUrl : '',
       image_prompt: usesAiOf(x) ? idea?.prompt || '' : '', visual_type: idea?.visual_type || 'object', image_shape: idea?.shape || 'square',
     };
   };
@@ -361,7 +377,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
     angle: count > 1 ? `Pick an angle for Creative ${LETTERS[tab]}` : 'Pick an angle',
     hook: count > 1 ? `Pick a hook for Creative ${LETTERS[tab]}` : 'Pick a hook',
     content: 'Check the words',
-    assets: 'Choose the visual',
+    assets: isPanel ? 'Choose the diagram' : 'Choose the visual',
     generate: count > 1 ? `Review ${count} creatives` : 'Review and generate',
   };
 
@@ -373,7 +389,10 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
       placeholder={`Ask for different hooks${count > 1 ? ` for Creative ${LETTERS[tab]}` : ''}, e.g. short questions about missed calls at night`} />,
     content: <Chat messages={v.chats.content} busy={isBusy(`${tab}:content`)} onSend={chatSend('content', loadContent)} label="Ask Claude to change the words"
       placeholder="e.g. make the headline shorter and mention the free setup" />,
-    assets: isDevice
+    assets: isPanel
+      ? <Chat messages={v.chats.panels} busy={isBusy(`${tab}:panels`)} onSend={chatSend('panels', loadPanels)} label="Ask for a different diagram"
+          placeholder="e.g. show it as a before and after, or use a timeline from Monday to Friday" />
+      : isDevice
       ? <Chat messages={v.chats.screens} busy={isBusy(`${tab}:screens`)} onSend={chatSend('screens', loadScreens)} label="Describe a different visual"
           placeholder="Describe a different visual, e.g. a coffee mug with a missed-call note, light background" />
       : usesAiOf(v) ? <Chat messages={v.chats.assets} busy={isBusy(`${tab}:assets`)} onSend={chatSend('assets', loadIdeas)} label="Describe a different image"
@@ -415,7 +434,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
             <h1>{TITLE[step]}</h1>
             {context && <span className="wz-context" title={context}>{context}</span>}
           </div>
-          {step !== 'setup' && tabs(step, { angle: 'angles', hook: 'hooks', content: 'content', assets: isDevice ? 'screens' : 'assets', generate: 'none' }[step])}
+          {step !== 'setup' && tabs(step, { angle: 'angles', hook: 'hooks', content: 'content', assets: isPanel ? 'panels' : isDevice ? 'screens' : 'assets', generate: 'none' }[step])}
         </header>
 
         <div className="wz-scroll">
@@ -446,7 +465,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
                 </div>
               </div>
               <details className="wz-more">
-                <summary><strong>More options</strong> <span>{METHOD_SHORT[method]} · {FORMAT_LABEL[format]} · {{ device: 'Clean card', free: 'Free design', classic: 'Classic card' }[design]} · {STAGE_SHORT[stage]} stage</span></summary>
+                <summary><strong>More options</strong> <span>{METHOD_SHORT[method]} · {FORMAT_LABEL[format]} · {{ panel: 'Headline + diagram', device: 'Clean card', free: 'Free design', classic: 'Classic card' }[design]} · {STAGE_SHORT[stage]} stage</span></summary>
                 <div className="grid-2">
                   <label className="field"><span>Method</span>
                     <select value={method} onChange={(e) => setMethod(e.target.value)}>
@@ -462,7 +481,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
                   </label>
                   <label className="field"><span>Design</span>
                     <select value={design} onChange={(e) => setDesign(e.target.value)}>
-                      <option value="device">Clean card with one visual</option><option value="free">Free design</option><option value="classic">Classic card</option>
+                      <option value="panel">Headline + diagram (house style)</option><option value="device">Clean card with one visual</option><option value="free">Free design</option><option value="classic">Classic card</option>
                     </select>
                   </label>
                   <label className="field"><span>Awareness stage</span>
@@ -538,7 +557,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
                       <label className="field"><span>Proof line</span><input value={v.content.proof_line || ''} onChange={(e) => setC('proof_line', e.target.value)} /></label>
                       <label className="field"><span>Note under the button</span><input value={v.content.cta_note || ''} onChange={(e) => setC('cta_note', e.target.value)} /></label>
                     </div>
-                    {!isDevice && (
+                    {!isDevice && !isPanel && (
                       <div className="grid-2">
                         <label className="field"><span>Bullets (one per line)</span><textarea rows={3} value={v.content.bulletsText} onChange={(e) => setC('bulletsText', e.target.value)} /></label>
                         <label className="field"><span>Extra line (offer, stat or guarantee)</span><input value={v.content.extra} onChange={(e) => setC('extra', e.target.value)} /></label>
@@ -626,7 +645,11 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
             </div>
           )}
 
-          {step === 'assets' && !isDevice && (
+          {step === 'assets' && isPanel && (
+            <PanelStep v={v} tab={tab} upd={upd} setPanel={setPanel} brand={brand} content={v.content} format={format} busy={isBusy(`${tab}:panels`)} editing={editVisual} setEditing={setEditVisual} />
+          )}
+
+          {step === 'assets' && !isDevice && !isPanel && (
             <div className="wz-body">
               <div className="wz-seg wide" role="radiogroup" aria-label="Visual">
                 <button role="radio" aria-checked={v.visual === 'both'} className={v.visual === 'both' ? 'on' : ''} onClick={() => chooseVisual('both')} disabled={!aiImages}>Photo + AI image</button>
@@ -673,7 +696,8 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
                   {v.content.support && <div><dt>Body text</dt><dd>{v.content.support}</dd></div>}
                   <div><dt>Button</dt><dd>{v.content.cta}</dd></div>
                   {isDevice && sc && <div><dt>Visual</dt><dd>{sc.kind === 'object' ? (sc.object || sc.idea) : `${DEVICE_LABEL[sc.device]} screen: ${sc.idea}`}</dd></div>}
-                  {!isDevice && <div><dt>Visual</dt><dd>{usesAiOf(v) ? v.ideas[v.ideaAt]?.idea : usesPhotoOf(v) ? 'Brand photo' : 'No image'}</dd></div>}
+                  {isPanel && v.panels[v.panelAt] && <div><dt>Diagram</dt><dd>{v.panels[v.panelAt].idea}</dd></div>}
+                  {!isDevice && !isPanel && <div><dt>Visual</dt><dd>{usesAiOf(v) ? v.ideas[v.ideaAt]?.idea : usesPhotoOf(v) ? 'Brand photo' : 'No image'}</dd></div>}
                 </dl>
                 <label className="field"><span>Notes for the design (optional)</span>
                   <textarea rows={2} value={v.designNotes} onChange={(e) => upd(tab, { designNotes: e.target.value })}
@@ -682,8 +706,8 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
                 <p className="small muted">{brand?.name} · {FORMAT_LABEL[format]} · {METHOD_SHORT[method]}{count > 1 ? ` · ${total} images in all` : ''}</p>
               </div>
               <aside className="wz-preview-col" aria-label="Preview">
-                <span className="wz-mini-label">Rough preview (Claude designs the final one)</span>
-                <CardPreview brand={brand} content={v.content} screen={isDevice ? sc : null} photo={usesPhotoOf(v) ? v.photoUrl : ''} />
+                <span className="wz-mini-label">{isPanel ? 'Preview' : 'Rough preview (Claude designs the final one)'}</span>
+                {isPanel ? <PanelPreview brand={brand} content={v.content} panel={v.panels[v.panelAt]} format={format} /> : <CardPreview brand={brand} content={v.content} screen={isDevice ? sc : null} photo={usesPhotoOf(v) ? v.photoUrl : ''} />}
               </aside>
             </div>
           )}
@@ -756,6 +780,117 @@ function CardPreview({ brand, content, screen, photo }) {
         {screen && <div className="wz-cp-visual"><VisualIcon screen={screen} accent={accent} /></div>}
       </div>
       <div className="wz-cp-foot" style={{ color: soft }}>{brand?.name}{brand?.website ? ` · ${brand.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : ''}</div>
+    </div>
+  );
+}
+
+// ---- headline + diagram card: the builder shows the same card the app will draw ----
+
+const PANEL_LABEL = {
+  timeline: 'Timeline', checklist: 'Checklist', steps: 'Numbered steps', compare_table: 'Before and after table', compare_cards: 'Today vs with us',
+  flow: 'Flow into one result', calendar: 'Two calendars', path: 'Broken vs connected path', tiles: 'Four tiles', columns: 'Three columns',
+  clock: 'Clock and reminders', seesaw: 'See-saw', funnel: 'Two funnels',
+};
+
+function useBrandFonts(brand) {
+  useEffect(() => {
+    const fams = [...new Set([brand?.fonts?.heading || 'Montserrat', brand?.fonts?.body || 'Nunito Sans'])];
+    const id = `cs-fonts-${fams.join('-').replace(/\W+/g, '')}`;
+    if (document.getElementById(id)) return;
+    const l = document.createElement('link');
+    l.id = id; l.rel = 'stylesheet';
+    l.href = `https://fonts.googleapis.com/css2?${fams.map((f) => `family=${encodeURIComponent(f)}:wght@500;600;700;800;900`).join('&')}&display=swap`;
+    document.head.appendChild(l);
+  }, [brand?.fonts?.heading, brand?.fonts?.body]);
+}
+
+/** The card exactly as the app will draw it, scaled to the box. */
+function PanelPreview({ brand, content, panel, format = '4:5', small = false }) {
+  useBrandFonts(brand);
+  // Each preview gets its own scope, so one card's theme never leaks into another's.
+  const scopeId = `cs-pp-${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const boxRef = useRef(null);
+  const [w, setW] = useState(small ? 200 : 320);
+  useEffect(() => {
+    const fit = () => boxRef.current && setW(boxRef.current.clientWidth);
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, []);
+  const fmt = format === '9:16' ? '9:16' : '4:5';
+  const H = fmt === '9:16' ? 1920 : 1350;
+  const a = brand?.audiences?.[content?.source] || {};
+  const furniture = {
+    cta: content?.cta || brand?.default_cta || 'Learn more', cta_note: content?.cta_note || '', proof_line: content?.proof_line || '', bonus_pill: content?.bonus_pill || '',
+    website: String(brand?.website || '').replace(/^https?:\/\//, '').replace(/\/$/, ''), email: brand?.email || '',
+  };
+  const d = {
+    headline_lines: [content?.headline || 'Your headline'], accent_words: (content?.accentText || '').split(',').map((t) => t.trim()).filter(Boolean),
+    subhead: content?.support || '', theme: panel?.theme || 'indigo', panel: panel || { type: 'checklist', rows: [] },
+  };
+  const { html, css } = buildPanelCard({ d, brand: brand || {}, furniture, format: fmt });
+  const f = { heading: brand?.fonts?.heading || 'Montserrat', body: brand?.fonts?.body || 'Nunito Sans' };
+  const scope = `.${scopeId} .canvas{--font-heading:"${f.heading}",Arial,sans-serif;--font-body:"${f.body}",Arial,sans-serif;position:relative;width:1080px;height:${H}px;overflow:hidden;box-sizing:border-box}
+.${scopeId} .canvas *{box-sizing:border-box}.${scopeId} .canvas :where(h1,p){margin:0}`;
+  const scoped = css.replace(/\.canvas/g, `.${scopeId} .canvas`);
+  const logo = brand?.logo_url || '';
+  const k = w / 1080;
+  return (
+    <div ref={boxRef} className={scopeId} style={{ width: '100%', height: H * k, overflow: 'hidden', borderRadius: 12, position: 'relative' }} aria-label="Preview of the creative">
+      <style>{scope + scoped}</style>
+      <div style={{ transform: `scale(${k})`, transformOrigin: '0 0', width: 1080, height: H, pointerEvents: 'none' }}
+        dangerouslySetInnerHTML={{ __html: `<div class="canvas">${html.replace(/\{\{LOGO\}\}/g, logo)}</div>` }} />
+    </div>
+  );
+}
+
+function PanelStep({ v, tab, setPanel, upd, brand, content, format, busy, editing, setEditing }) {
+  const p = v.panels[v.panelAt];
+  const rowsText = (rows) => (rows || []).map((r) => (r.b ? `${r.a} | ${r.b}` : r.a)).join('\n');
+  const parseRows = (t) => lines(t).map((l) => { const [a, ...b] = l.split('|'); return { a: a.trim(), b: b.join('|').trim() }; });
+  return (
+    <div className="wz-body wz-visual">
+      <div className="wz-visual-list">
+        {busy && v.panels.length === 0 && <Loading text="Claude is drawing diagram ideas for this hook…" />}
+        <div className="wz-vgrid wz-pgrid" role="radiogroup" aria-label="Diagrams">
+          {v.panels.map((x, i) => (
+            <button key={i} role="radio" aria-checked={v.panelAt === i} className={`wz-vcard wz-pcard ${v.panelAt === i ? 'on' : ''}`} onClick={() => upd(tab, { panelAt: i })}>
+              <span className="wz-pthumb"><PanelPreview brand={brand} content={content} panel={x} format="4:5" small /></span>
+              <span className="wz-vlabel"><small>{PANEL_LABEL[x.type] || 'Diagram'}</small><strong>{x.idea}</strong></span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <aside className="wz-preview-col" aria-label="Preview">
+        <span className="wz-mini-label">Preview</span>
+        {p ? <PanelPreview brand={brand} content={content} panel={p} format={format} /> : <p className="small muted">Pick a diagram to see the creative.</p>}
+        {p && <button className="link-btn" onClick={() => setEditing((e) => !e)}>{editing ? 'Done editing' : 'Edit this diagram'}</button>}
+        {p && editing && (
+          <div className="wz-screen-edit">
+            <div className="grid-2">
+              <label className="field"><span>Diagram</span>
+                <select value={p.type} onChange={(e) => setPanel(v.panelAt, { type: e.target.value })}>{Object.keys(PANEL_TYPES).map((t) => <option key={t} value={t}>{PANEL_LABEL[t] || t}</option>)}</select>
+              </label>
+              <label className="field"><span>Background</span>
+                <select value={p.theme} onChange={(e) => setPanel(v.panelAt, { theme: e.target.value })}>{THEME_NAMES.map((t) => <option key={t} value={t}>{t[0].toUpperCase() + t.slice(1)}</option>)}</select>
+              </label>
+            </div>
+            <label className="field"><span>Heading</span><input value={p.heading || ''} onChange={(e) => setPanel(v.panelAt, { heading: e.target.value })} /></label>
+            <div className="grid-2">
+              <label className="field"><span>Left label</span><input value={p.left_label || ''} onChange={(e) => setPanel(v.panelAt, { left_label: e.target.value })} /></label>
+              <label className="field"><span>Right label</span><input value={p.right_label || ''} onChange={(e) => setPanel(v.panelAt, { right_label: e.target.value })} /></label>
+            </div>
+            <label className="field"><span>Lines (one per line; use | to add a detail)</span>
+              <textarea rows={4} defaultValue={rowsText(p.rows)} key={`${tab}-${v.panelAt}`} onChange={(e) => setPanel(v.panelAt, { rows: parseRows(e.target.value) })} /></label>
+            <div className="grid-2">
+              <label className="field"><span>Middle / time</span><input value={p.center || ''} onChange={(e) => setPanel(v.panelAt, { center: e.target.value })} /></label>
+              <label className="field"><span>Kicker under it</span><input value={p.footnote || ''} onChange={(e) => setPanel(v.panelAt, { footnote: e.target.value })} /></label>
+              <label className="field"><span>Result (or left caption)</span><input value={p.result || ''} onChange={(e) => setPanel(v.panelAt, { result: e.target.value })} /></label>
+              <label className="field"><span>Result detail (or right caption)</span><input value={p.result_detail || ''} onChange={(e) => setPanel(v.panelAt, { result_detail: e.target.value })} /></label>
+            </div>
+          </div>
+        )}
+      </aside>
     </div>
   );
 }

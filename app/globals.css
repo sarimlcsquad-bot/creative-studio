@@ -648,3 +648,9 @@ input, textarea, select { border-color: var(--field); border-radius: 10px; }
   .wz-context { max-width: 100%; }
   .wz-choice { grid-template-columns: 1fr; }
 }
+
+/* Headline + diagram card: diagram choices show the real card */
+.wz-pgrid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.wz-pcard { padding: 8px; align-items: stretch; }
+.wz-pcard .wz-pthumb { display: block; width: 100%; border-radius: 10px; overflow: hidden; }
+.wz-pcard .wz-vlabel { padding: 8px 4px 2px; }
