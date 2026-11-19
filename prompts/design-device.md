@@ -1,66 +1,41 @@
 # The design (device card)
 
-You design this creative as a single HTML fragment plus CSS, rendered at a fixed pixel size into a PNG. The look is a clean, sparse product card: one hero visual on one flat background colour, next to a short heavy headline and one short body line. The hero visual is usually a real device whose screen shows the fix, but when the request names an object instead (a fridge, a calendar, a toolbox, an invoice…), that object is the hero visual and sits in the device's slot. Less text wins: the reader takes it in within two seconds.
+The app lays this card out itself, on a fixed professional grid: logo top-left, offer pill top-right, the headline across the full width, then a column with the body line, proof line, button and note beside (or above) one hero visual, and the footer at the bottom. You do not write the layout. You make the design decisions that the layout shows, and they decide whether the ad looks premium or generic. Return `html` and `css` as empty strings.
 
-## Exactly what goes on the card (nothing else)
+## What you decide
 
-1. **Logo** top-left.
-2. **Offer pill** top-right, only when the request gives one.
-3. **Headline**: 2 or 3 short lines, at most about 9 words in all.
-4. **Body line** right under the headline: one or two short sentences (at most about 22 words) that carry the hook to the fix or offer. When the request gives a body line, use it word for word.
-5. **The device**, whose screen shows the fix.
-6. **Proof line** with a small shield icon.
-7. **CTA button** and the **note** under it.
-8. **Footer**: brand name, website and email.
+### 1. The headline (`headline_lines`, `accent_words`)
 
-Only that one body line, no second paragraph, no bullet or check list, no price line, no extra offer line, no stats, no star ratings or review scores ("5/5", "★★★★★", "rated…", "from verified reviews") anywhere on the card or the screen. Benefits, bullets and the offer details belong in the caption, not on the card.
+- The headline is the hook, split into 2 or 3 lines (`headline_lines`), at most about 9 words in all. Break at natural phrase boundaries, never mid-phrase, and keep the lines close in length: each line about 10 to 18 characters is ideal, never over 22. Shorter lines mean a bigger, bolder headline.
+- `accent_words`: 1 to 3 consecutive payoff words that appear exactly in the headline (the outcome, the pain, or the twist). They are shown in the brand accent colour. Never accent a whole line or filler words.
+- When the request gives a hook, use its words exactly; you only choose the line breaks and the accent words.
 
-The texts for the offer pill, proof line, CTA button and note are given in the request. Use them **word for word**: never invent, rename or paraphrase them, and never write your own proof. If the request gives no offer pill or no proof line, leave that element out.
+### 2. The body line (`subhead`)
 
-## Required class names
+- One or two short sentences under the headline, at most about 22 words, that carry the hook to the fix or offer in plain words. When the request gives a body line, return it word for word.
+- It adds information the headline does not have. No repeating the headline, no hype, no ratings, no numbers the brand kit does not support.
 
-Use these classes so the app can check the card: `class="logo"` on the logo img, `class="bonus"` on the offer pill, `class="headline"` on the headline element, `class="body"` on the body line, `class="acc"` on each accent span, `class="device"` on the outer device body, `class="proof"` on the proof line, `class="cta"` on the button, `class="cta-note"` on the note, `class="foot"` on the footer.
+### 3. The hero visual
 
-## The headline
+- **A device** (`device`: phone, tablet or laptop) whose screen shows the moment the headline's problem gets fixed: `screen.app_title` (2 or 3 words, like "Inbox", "Today's jobs", "Build tracker") and `screen.elements`, 3 to 5 lines, top to bottom. Write each line as "Label: detail" with a short label (2 to 4 words) and a short detail (under about 40 characters), for example "Missed call: Sam, 7:40pm" then "Texted back: in 4 seconds" then "Booked: Tue 9:00am". The first line is the key moment and gets highlighted. Words like missed, lost or overdue get a red mark; booked, done, sent, built, signed or paid get a green check; use them so the screen tells the before-and-after story at a glance. Generic first names, 555 numbers and times only; no prices, counts, statistics, ratings, faces or real app names.
+- Phones and tablets sit beside the column (`device_side` "right" or "left"); laptops sit below it (`device_side` "below").
+- **An object**, when the request says the visual is an object: it is made as an image with a see-through background (or, when the request says no image is generated, drawn by you in `object_svg`). Keep `device` "phone" and `screen` empty for objects.
+- `object_svg`: only for an object with no generated image. One `<svg viewBox="0 0 400 400">` drawing of the object: bold, simple flat shapes (rect, circle, path, polygon), centred, the brand colours plus white and neutral greys, a soft ellipse shadow under it. No text, no gradients over half the shape, no strokes thinner than 4. Otherwise an empty string.
 
-- Heavy (800 or 900 weight), left-aligned, `headline_lines` holds its 2 or 3 lines. Size about 84 to 110 px, line-height about 1.04. Plain, clear words.
-- Accent words: 1 to 3 payoff words, each in `<span class="acc">`, coloured with the brand accent `var(--accent)` as **text colour only**: no highlight box, no background bar, no underline block, no second accent colour. Every other headline word uses one plain text colour that reads on the ground (near-white on dark, near-black on light).
+### 4. The background (`background_hex`)
 
-## The body line
+- One flat colour filling the card, in the brand's family: a deep shade of a brand colour (near-black navy, charcoal, deep green…) or a very light warm tint (off-white, cream, pale grey). Follow the ground the request asks for (dark or light).
+- The accent colour must stand out on it strongly, and the headline text (white on dark, near-black on light) must read easily. Never a saturated mid-tone background.
+- When the person picked a background in the builder, use it.
 
-- `var(--font-body)`, weight 500, about 30 to 36 px (about 34 to 40 px in 9:16), line-height about 1.35, at most about 3 lines, max-width about 480 px beside a phone (full width above a laptop). Colour: the plain text colour at about 80 % strength (a light grey on dark, a dark grey on light). Never the accent colour. About 24 to 32 px below the headline.
+### 5. The rest
 
-## The device
+- `device_side`, `story_9x16_note` (one sentence on how the card adapts to 9:16; the app handles the layout), `layout_name` "device <phone|tablet|laptop|object> <right|left|below>", `image_shape` "none", `photo_prompt` empty, `visual_type` "n/a", `brand_image_index` -1, `hook` the headline as one line.
+- The offer pill, proof line, button and note under it are added by the app from the brand kit, word for word. Never put them, ratings or review scores ("5/5", "★", "verified reviews") anywhere in your fields.
 
-- One phone, tablet or laptop drawn in HTML/CSS, shown whole, upright (tilt at most 4 degrees). Near-black bezel (#0E0E10 to #1C1C1F), rounded corners (phone about 56 px, tablet about 36 px, laptop screen about 18 px plus a thin base), a soft shadow, a light screen. A phone has a small camera pill.
-- **The screen is synced to the headline**: the app view where the headline's problem gets fixed, using its key words, problem and fix together where possible. An app title bar (`screen.app_title`) and 3 to 5 simple elements (`screen.elements`): notification rows, chat bubbles, a calendar slot, a pipeline or checklist card, a status chip. Generic first names, 555 numbers and times only. No prices, counts, statistics, ratings, faces or real app logos. Screen text at least 20 px.
-- Screen colours: neutrals plus the brand colours; a small red dot for a problem and a small green check for done are fine. No other blues, greens or purples.
+## What makes it look professional
 
-## Layout grid (stay inside it, nothing touches or overlaps)
-
-Margins are 64 px on every side. Elements never overlap each other, and the device never touches the footer or the canvas edge.
-
-**4:5 (1080 x 1350)**
-- Top bar y 64 to 140: logo left, offer pill right.
-- Phone or upright tablet (`device_side` "right"): x 600 to 1016, y 200 to 1150 at most. Left column x 64 to 560: headline from y 220, then the body line, proof line, CTA and note, all ending above y 1150.
-- Laptop or landscape tablet (`device_side` "below"): headline y 200 to about 440 across the width, body line under it; CTA and note on one row under it (proof line beside or just above); device x 100 to 980, ending above y 1150.
-- Footer y 1200 to 1286: brand name, then website · email, left-aligned. Nothing else in this band.
-
-**9:16 (1080 x 1920)**: Stories and Reels cover the top 14 % and bottom 35 %. Top bar y 280 to 350; headline from y 400 (full width, 2 or 3 lines) with the body line under it; then phone on the right x 600 to 1016 from y 760 (its lower body may run past y 1250, its screen content may not); left column x 64 to 560 from y 760: proof line, CTA, note, then the footer, all ending above y 1250. Laptops: under the CTA row, x 100 to 980, ending above y 1250, and the footer goes in the left column above it. Write `story_9x16_note` as one sentence on what you moved to fit (for other formats, one sentence on how this card adapts to 9:16).
-
-## Colours (brand fidelity)
-
-- Use only the brand colours: `var(--accent)`, `var(--primary)`, `var(--secondary)`, `var(--deep)`, `var(--light)`, plus white, black, neutral greys, the bezel greys, the small red and green status marks on the screen, and the one flat `background_hex`.
-- `background_hex`: one flat colour filling the canvas, no gradient, no photo, no pattern. Pick a dark or light ground as the request says, in the brand's family (a deep or very light tint of a brand colour), with strong contrast against the headline text and the accent.
-- The CTA button background is `var(--accent)` with a white label (dark label only if white would not read on that accent). Never another colour.
-
-## Brand fonts
-
-`var(--font-heading)` for the headline and wordmark, `var(--font-body)` for everything else, weights 400 to 900. No other fonts.
-
-## Technical rules
-
-- `html`: only the inner content of `.canvas` (`position: relative`, `overflow: hidden`). Allowed elements: div, span, p, h1 to h6, strong, em, b, i, br, img, svg and its shapes (path, circle, rect, line, polyline, polygon, g, defs; no svg <text>). No ul, ol or li. Put styling in `css`; short inline style attributes are fine.
-- `css`: plain CSS scoped under `.canvas`. No @import, @font-face, external url(), animations or :hover.
-- No scripts, event handlers, links, forms, iframes or external resources. The only URL allowed is `{{LOGO}}` (`<img src="{{LOGO}}" class="logo">`, about 64 to 80 px tall; if has_logo is false, write the brand name as a wordmark with class "logo"). Never use `{{BG}}`, and use `{{PHOTO}}` only when the request says the visual is a generated image.
-- `subhead` is the body line exactly as it appears on the card. `layout_name` is "device <phone|tablet|laptop> <right|left|below>", `image_shape` "none", `photo_prompt` empty, `visual_type` "n/a", `brand_image_index` -1. `hook` is the headline as one line, word for word.
+- One idea per card: the headline states it, the body line explains it, the visual proves it.
+- Contrast and restraint: one accent colour used only on the accent words, the button and small marks.
+- A screen that tells a story in one glance (problem row, then the fix, then the result), not a list of features.
+- Real, specific, ordinary details (a time, a first name, a job type) instead of vague claims.
