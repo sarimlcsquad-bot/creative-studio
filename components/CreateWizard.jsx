@@ -834,7 +834,7 @@ function PanelPreview({ brand, content, panel, format = '4:5', small = false }) 
   const { html, css } = buildPanelCard({ d, brand: brand || {}, furniture, format: fmt });
   const f = { heading: brand?.fonts?.heading || 'Montserrat', body: brand?.fonts?.body || 'Nunito Sans' };
   const scope = `.${scopeId} .canvas{--font-heading:"${f.heading}",Arial,sans-serif;--font-body:"${f.body}",Arial,sans-serif;position:relative;width:1080px;height:${H}px;overflow:hidden;box-sizing:border-box}
-.${scopeId} .canvas *{box-sizing:border-box}.${scopeId} .canvas :where(h1,p){margin:0}`;
+.${scopeId} .canvas{isolation:isolate}.${scopeId} .canvas *{box-sizing:border-box}.${scopeId} .canvas :where(h1,p){margin:0}`;
   const scoped = css.replace(/\.canvas/g, `.${scopeId} .canvas`);
   const logo = brand?.logo_url || '';
   const k = w / 1080;
@@ -842,7 +842,36 @@ function PanelPreview({ brand, content, panel, format = '4:5', small = false }) 
     <div ref={boxRef} className={scopeId} style={{ width: '100%', height: H * k, overflow: 'hidden', borderRadius: 12, position: 'relative' }} aria-label="Preview of the creative">
       <style>{scope + scoped}</style>
       <div style={{ transform: `scale(${k})`, transformOrigin: '0 0', width: 1080, height: H, pointerEvents: 'none' }}
-        dangerouslySetInnerHTML={{ __html: `<div class="canvas">${html.replace(/\{\{LOGO\}\}/g, logo)}</div>` }} />
+        dangerouslySetInnerHTML={{ __html: `<div class="canvas">${html.replace(/\{\{LOGO\}\}/g, logo).replace(/\{\{BG\}\}/g, panel?.bg_url || '')}</div>` }} />
+    </div>
+  );
+}
+
+/** Background photo from the person's computer, with a shade so the words stay readable. */
+function BgPhotoField({ panel, onChange }) {
+  const [busy, setBusy] = useState(false);
+  const fileRef = useRef(null);
+  const pickFile = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file) return;
+    setBusy(true);
+    try { onChange({ bg_url: await api.upload(file, 'backgrounds'), bg_shade: panel.bg_shade ?? 0.5 }); }
+    catch (err) { toast(`Upload failed: ${err.message}`, 'error'); }
+    finally { setBusy(false); }
+  };
+  const shade = Math.round((panel.bg_shade ?? 0.5) * 100);
+  return (
+    <div className="bg-photo-field">
+      <div className="row-gap center">
+        <span className="small"><strong>Background photo</strong></span>
+        <button className="btn xs" onClick={() => fileRef.current?.click()} disabled={busy}>{busy ? 'Uploading…' : panel.bg_url ? 'Change photo' : 'Upload from computer'}</button>
+        {panel.bg_url && <button className="btn xs danger" onClick={() => onChange({ bg_url: '' })}>Remove</button>}
+        <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={pickFile} />
+      </div>
+      {panel.bg_url && (
+        <label className="bg-shade"><span className="small">Shade over the photo: {shade}%</span>
+          <input type="range" min={0} max={90} step={5} value={shade} onChange={(e) => onChange({ bg_shade: +e.target.value / 100 })} /></label>
+      )}
     </div>
   );
 }
@@ -867,6 +896,7 @@ function PanelStep({ v, tab, setPanel, upd, brand, content, format, busy, editin
       <aside className="wz-preview-col" aria-label="Preview">
         <span className="wz-mini-label">Preview</span>
         {p ? <PanelPreview brand={brand} content={content} panel={p} format={format} /> : <p className="small muted">Pick a diagram to see the creative.</p>}
+        {p && <BgPhotoField panel={p} onChange={(patch) => setPanel(v.panelAt, patch)} />}
         {p && <button className="link-btn" onClick={() => setEditing((e) => !e)}>{editing ? 'Done editing' : 'Edit this diagram'}</button>}
         {p && editing && (
           <div className="wz-screen-edit">

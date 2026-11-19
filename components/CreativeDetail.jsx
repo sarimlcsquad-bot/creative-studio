@@ -6,6 +6,7 @@ import { IconStar, IconTrash } from './Icons.jsx';
 import { renderCard, FORMATS } from '@/lib/client/renderCard';
 import { editorDoc, toStoredHtml } from '@/lib/client/renderHtml';
 import { api } from '@/lib/client/api';
+import { bgPhotoHtml } from '@/lib/panelTemplate';
 import { toast } from './Toasts.jsx';
 import { STAGE_LABEL, METHOD_LABEL } from './CreativeCard.jsx';
 
@@ -88,7 +89,7 @@ const toHex = (c) => {
 };
 
 // Free designs are edited in place: click any text on the design and type, or switch to Layout and colour to move, resize, rotate, recolour or remove parts.
-function HtmlEditor({ creative, brand, frameRef, mode, toolsEl }) {
+function HtmlEditor({ creative, brand, frameRef, mode, toolsEl, onBg }) {
   const fmt = FORMATS[creative.format] || FORMATS['1:1'];
   const boxRef = useRef(null);
   const [scale, setScale] = useState(0.4);
@@ -221,6 +222,44 @@ function HtmlEditor({ creative, brand, frameRef, mode, toolsEl }) {
     else if (e.key === 'Escape') setSel(null);
   };
 
+  // Background photo from the person's computer: one image under everything plus a shade layer.
+  const fileRef = useRef(null);
+  const [upBusy, setUpBusy] = useState(false);
+  const bgImg = () => canvasEl()?.querySelector('img.cs-bg-photo, img.cs-auto-bg');
+  const bgShade = () => canvasEl()?.querySelector('.cs-bg-shade');
+  const shadeOf = (el) => { const m = (el?.style.background || '').match(/rgba?\(([\d\s,]+),\s*([\d.]+)\)/); return m ? +m[2] : 0; };
+  const setShade = (a, tone) => {
+    let sh = bgShade(); const c = canvasEl(); if (!c) return;
+    if (!sh) { const img = bgImg(); if (!img) return; img.insertAdjacentHTML('afterend', '<div class="cs-bg-shade" data-tone="dark" style="position:absolute;inset:0;z-index:-1"></div>'); sh = bgShade(); }
+    const t = tone || sh.getAttribute('data-tone') || 'dark';
+    sh.setAttribute('data-tone', t);
+    sh.style.background = `rgba(${t === 'light' ? '255,255,255' : '0,0,0'},${a})`;
+    bump((n) => n + 1);
+  };
+  const uploadBg = async (e) => {
+    const file = e.target.files?.[0]; e.target.value = '';
+    const c = canvasEl(); if (!file || !c) return;
+    setUpBusy(true);
+    try {
+      const url = await api.upload(file, 'backgrounds');
+      const img = bgImg();
+      if (img) { img.src = url; img.style.opacity = ''; }
+      else {
+        // Dark text on a light card gets a light shade, light text a dark one.
+        const m = (win().getComputedStyle(c).color.match(/[\d.]+/g) || [255, 255, 255]).map(Number);
+        const tone = (m[0] * 299 + m[1] * 587 + m[2] * 114) / 1000 > 128 ? 'dark' : 'light';
+        c.insertAdjacentHTML('afterbegin', bgPhotoHtml(url, 0.5, tone));
+      }
+      onBg?.(url);
+      bump((n) => n + 1);
+    } catch (err) { toast(`Upload failed: ${err.message}`, 'error'); }
+    finally { setUpBusy(false); }
+  };
+  const removeBg = () => { bgImg()?.remove(); bgShade()?.remove(); onBg?.(null); bump((n) => n + 1); };
+  const hasBg = !!bgImg();
+  const shadeNow = shadeOf(bgShade());
+  const toneNow = bgShade()?.getAttribute('data-tone') || 'dark';
+
   const changed = mode === 'layout' && !!canvasEl()?.querySelector(ANY_MARK);
   const m = sel ? readMove(sel) : { s: 1, r: 0 };
   const cs = sel && win() ? win().getComputedStyle(sel) : null;
@@ -254,6 +293,23 @@ function HtmlEditor({ creative, brand, frameRef, mode, toolsEl }) {
         <div className="lt-row"><input type="color" disabled={!sel} value={curFill} onChange={(e) => fillColor(e.target.value)} aria-label="Fill colour" /></div>
         <span>Border colour</span>
         <div className="lt-row"><input type="color" disabled={!hasBorder} value={curBorder} onChange={(e) => borderColor(e.target.value)} aria-label="Border colour" /></div>
+      </div>
+      <div className="lt-bg">
+        <div className="lt-row wrap"><strong className="small">Background photo</strong>
+          <button className="btn xs" disabled={upBusy} onClick={() => fileRef.current?.click()}>{upBusy ? 'Uploading…' : hasBg ? 'Change photo' : 'Upload from computer'}</button>
+          {hasBg && <button className="btn xs danger" onClick={removeBg}>Remove photo</button>}
+          <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={uploadBg} />
+        </div>
+        {hasBg && (
+          <div className="lt-row wrap">
+            <div className="seg sm" role="radiogroup" aria-label="Shade colour">
+              <button role="radio" aria-checked={toneNow === 'dark'} className={toneNow === 'dark' ? 'on' : ''} onClick={() => setShade(shadeNow || 0.5, 'dark')}>Darken</button>
+              <button role="radio" aria-checked={toneNow === 'light'} className={toneNow === 'light' ? 'on' : ''} onClick={() => setShade(shadeNow || 0.5, 'light')}>Lighten</button>
+            </div>
+            <input type="range" min={0} max={90} step={5} value={Math.round(shadeNow * 100)} onChange={(e) => setShade(+e.target.value / 100)} aria-label="Shade over the photo" />
+            <small>{Math.round(shadeNow * 100)}%</small>
+          </div>
+        )}
       </div>
       <div className="lt-row wrap">
         <button className="btn xs" disabled={!sel} onClick={() => sel?.parentElement && sel.parentElement !== canvasEl() && setSel(sel.parentElement)}>Select group</button>
@@ -294,6 +350,7 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onF
   const [editing, setEditing] = useState(false);
   const [mode, setMode] = useState('text');
   const [toolsEl, setToolsEl] = useState(null);
+  const bgRef = useRef(undefined);
   const [spec, setSpec] = useState(creative.spec || { blocks: [] });
   const [saving, setSaving] = useState(false);
   const frameRef = useRef(null);
@@ -329,7 +386,10 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onF
       if (isHtml) {
         const canvas = frameRef.current?.contentDocument?.querySelector('.canvas');
         if (!canvas) throw new Error('The editor is still loading');
-        next = { ...spec, html: toStoredHtml(canvas.innerHTML, creative, brand) };
+        next = { ...spec };
+        // A background photo uploaded in the editor is stored as {{BG}} like the generated ones.
+        if (bgRef.current !== undefined) { if (bgRef.current) next.bg_url = bgRef.current; else delete next.bg_url; }
+        next.html = toStoredHtml(canvas.innerHTML, { ...creative, spec: next }, brand);
         setSpec(next);
       }
       await api.updateCreative({ id: creative.id, spec: next, rendered_url: null });
@@ -358,12 +418,12 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onF
         {editing
           ? <><button className="btn ghost" onClick={() => { setSpec(creative.spec); setEditing(false); }}>Cancel</button>
               <button className="btn primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</button></>
-          : <><button className="btn ghost" onClick={() => { setMode('text'); setEditing(true); }}>{isHtml ? 'Edit' : 'Edit text'}</button>
+          : <><button className="btn ghost" onClick={() => { setMode('text'); bgRef.current = undefined; setEditing(true); }}>{isHtml ? 'Edit' : 'Edit text'}</button>
               <button className="btn primary" onClick={download}>Download PNG</button></>}
       </>}>
       <div className="detail">
         <div className="detail-canvas">
-          {editing && isHtml ? <HtmlEditor creative={{ ...creative, spec }} brand={brand} frameRef={frameRef} mode={mode} toolsEl={toolsEl} /> : <canvas ref={ref} />}
+          {editing && isHtml ? <HtmlEditor creative={{ ...creative, spec }} brand={brand} frameRef={frameRef} mode={mode} toolsEl={toolsEl} onBg={(u) => { bgRef.current = u; }} /> : <canvas ref={ref} />}
         </div>
         <div className="detail-side">
           {editing && isHtml ? (

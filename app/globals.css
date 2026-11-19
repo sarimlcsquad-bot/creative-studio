@@ -673,3 +673,7 @@ input, textarea, select { border-color: var(--field); border-radius: 10px; }
 .lt-row input[type=color] { width: 44px; height: 30px; padding: 2px; border: 1px solid var(--line, #d5d9d7); border-radius: 6px; background: #fff; cursor: pointer; }
 .lt-row input[type=color]:disabled { opacity: .4; cursor: default; }
 .detail-side .seg { margin-bottom: 12px; }
+.lt-bg { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--line, #d5d9d7); border-radius: 10px; }
+.lt-bg input[type=range], .bg-shade input[type=range] { flex: 1; min-width: 120px; accent-color: var(--accent); }
+.bg-photo-field { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 4px; }
+.bg-shade { display: flex; flex-direction: column; gap: 4px; }
