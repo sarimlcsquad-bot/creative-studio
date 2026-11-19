@@ -374,15 +374,22 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
             placeholder="Tell Claude how to write it, e.g. drop the bullets and mention the 14-day free trial" />
           {content && (
             <>
-              <label className="field"><span>Headline (your hook)</span><input value={content.headline} onChange={(e) => setC('headline', e.target.value)} /></label>
-              <label className="field"><span>Support line</span><textarea rows={2} value={content.support} onChange={(e) => setC('support', e.target.value)} /></label>
-              <div className="grid-2">
-                <label className="field"><span>Bullets (one per line, optional)</span><textarea rows={4} value={content.bulletsText} onChange={(e) => setC('bulletsText', e.target.value)} /></label>
-                <div>
-                  <label className="field"><span>Extra line (offer, stat or guarantee, optional)</span><input value={content.extra} onChange={(e) => setC('extra', e.target.value)} /></label>
-                  <label className="field"><span>Button text</span><input value={content.cta} onChange={(e) => setC('cta', e.target.value)} /></label>
-                </div>
-              </div>
+              {isDevice && <p className="small muted" style={{ margin: 0 }}>A device card keeps the card short: headline, device, proof line, button and note, offer pill and footer. Benefits and the offer details go in the caption below.</p>}
+              <label className="field"><span>{isDevice ? 'Headline (2 or 3 short lines, about 9 words at most)' : 'Headline (your hook)'}</span><input value={content.headline} onChange={(e) => setC('headline', e.target.value)} /></label>
+              {isDevice ? (
+                <label className="field"><span>Button text (the brand's CTA)</span><input value={content.cta} onChange={(e) => setC('cta', e.target.value)} /></label>
+              ) : (
+                <>
+                  <label className="field"><span>Support line</span><textarea rows={2} value={content.support} onChange={(e) => setC('support', e.target.value)} /></label>
+                  <div className="grid-2">
+                    <label className="field"><span>Bullets (one per line, optional)</span><textarea rows={4} value={content.bulletsText} onChange={(e) => setC('bulletsText', e.target.value)} /></label>
+                    <div>
+                      <label className="field"><span>Extra line (offer, stat or guarantee, optional)</span><input value={content.extra} onChange={(e) => setC('extra', e.target.value)} /></label>
+                      <label className="field"><span>Button text</span><input value={content.cta} onChange={(e) => setC('cta', e.target.value)} /></label>
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="grid-2">
                 <label className="field"><span>Accent words (comma separated)</span><input value={content.accentText || ''} onChange={(e) => setC('accentText', e.target.value)} placeholder="e.g. every call" /></label>
                 <label className="field"><span>Bonus pill (top right, optional)</span><input value={content.bonus_pill || ''} onChange={(e) => setC('bonus_pill', e.target.value)} /></label>
@@ -537,9 +544,11 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
           </div>
           <div>
             <h3>{content.headline}</h3>
-            {content.support && <p>{content.support}</p>}
-            {content.bulletsText && <ul>{content.bulletsText.split('\n').filter(Boolean).map((t, i) => <li key={i}>{t}</li>)}</ul>}
-            {content.extra && <p><strong>{content.extra}</strong></p>}
+            {!isDevice && content.support && <p>{content.support}</p>}
+            {!isDevice && content.bulletsText && <ul>{content.bulletsText.split('\n').filter(Boolean).map((t, i) => <li key={i}>{t}</li>)}</ul>}
+            {!isDevice && content.extra && <p><strong>{content.extra}</strong></p>}
+            {isDevice && content.proof_line && <p className="small">🛡 {content.proof_line}</p>}
+            {isDevice && content.bonus_pill && <p className="small"><span className="chip">{content.bonus_pill}</span></p>}
             {content.cta && <span className="wz-cta">{content.cta}</span>}
             <label className="field wz-design-prompt"><span>Prompt for the design (optional)</span>
               <textarea rows={2} value={designNotes} onChange={(e) => setDesignNotes(e.target.value)}

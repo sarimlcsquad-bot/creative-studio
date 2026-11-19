@@ -21,7 +21,7 @@ export const POST = handler(async (request) => {
   const notes = clip(b.notes, 1500);
   const history = Array.isArray(b.history) ? b.history.map((x) => clip(x, 1000)).slice(-8) : [];
   const source = b.source === 'agency' ? 'agency' : 'owner';
-  const chat = { direction, history, notes, source };
+  const chat = { direction, history, notes, source, device: b.design === 'device' || !b.design };
   const format = b.format === 'both' ? '4:5 and 9:16 (one of each)' : b.format;
 
   if (b.step === 'angles') return ok(await suggestAngles({ brand, method, stage: b.stage, avoid, ...chat }));

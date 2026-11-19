@@ -1,44 +1,63 @@
 # The design (device card)
 
-You design this creative as a single HTML fragment plus CSS, rendered at a fixed pixel size into a PNG. The look is a clean product card: one real device whose screen shows the fix, on one flat background colour, next to a heavy headline.
+You design this creative as a single HTML fragment plus CSS, rendered at a fixed pixel size into a PNG. The look is a clean, sparse product card: one real device whose screen shows the fix, on one flat background colour, next to a short heavy headline. Less text wins: the reader takes it in within two seconds.
 
-## The card
+## Exactly what goes on the card (nothing else)
 
-- **One device**, drawn by you in HTML/CSS: a phone, a tablet or a laptop, shown whole (never cropped by the canvas edge), straight on or with a slight tilt of at most 6 degrees. Build it from divs: a body with a near-black bezel (#0E0E10 to #1C1C1F), rounded corners (phone about 56 px, tablet about 36 px, laptop screen about 18 px plus a thin base), a soft drop shadow, and a light screen inside. A phone has a small camera pill at the top of the screen.
-- **The screen is synced to the headline.** It shows the app view where the headline's problem gets fixed, using the headline's key words: if the headline says missed calls, the screen shows a missed call followed by the instant text-back; if it says quotes, the screen shows the quote being sent. Show problem and fix in the same view where you can (a red missed-call row, then a green "Texted back" row).
-- **Screen content is factual and generic**: an app title bar (`screen.app_title`), then 3 to 6 elements such as notification rows, chat bubbles, a calendar slot, a pipeline card, a form, a checklist or a status chip (`screen.elements`, one short line each describing what you drew). Use generic first names (Sam, Jordan, Priya), 555 phone numbers (such as (555) 014-2290), and times. No prices, no counts or statistics, no star ratings, no faces or photos, no real app logos. Screen text is at least 20 px so it reads at feed size.
-- **One flat background colour** filling the canvas (`background_hex`), no gradients, no photos, no patterns. Pick it to suit the brand colours; the request says whether this ad uses a dark or a light ground. Text on it must have strong contrast.
+1. **Logo** top-left.
+2. **Offer pill** top-right, only when the request gives one.
+3. **Headline**: 2 or 3 short lines, at most about 9 words in all.
+4. **The device**, whose screen shows the fix.
+5. **Proof line** with a small shield icon.
+6. **CTA button** and the **note** under it.
+7. **Footer**: brand name, website and email.
+
+No subhead, no support sentence, no bullet or check list, no price line, no extra offer line, no stats, no star ratings or review scores ("5/5", "★★★★★", "rated…", "from verified reviews") anywhere on the card or the screen. Benefits, bullets and the offer details belong in the caption, not on the card.
+
+The texts for the offer pill, proof line, CTA button and note are given in the request. Use them **word for word**: never invent, rename or paraphrase them, and never write your own proof. If the request gives no offer pill or no proof line, leave that element out.
+
+## Required class names
+
+Use these classes so the app can check the card: `class="logo"` on the logo img, `class="bonus"` on the offer pill, `class="headline"` on the headline element, `class="acc"` on each accent span, `class="device"` on the outer device body, `class="proof"` on the proof line, `class="cta"` on the button, `class="cta-note"` on the note, `class="foot"` on the footer.
 
 ## The headline
 
-- Heavy (800 or 900 weight), left-aligned, 2 to 4 lines (`headline_lines`), large (usually 76 to 120 px, line-height about 1.02).
-- Accent words: 1 to 3 payoff words (`accent_words`) shown in the brand accent colour (or on an accent highlight bar on a light ground). Everything else in the headline uses the ground's text colour.
-- An optional short subhead under it (at most about 14 words, 30 to 38 px).
+- Heavy (800 or 900 weight), left-aligned, `headline_lines` holds its 2 or 3 lines. Size about 84 to 110 px, line-height about 1.04. Plain, clear words.
+- Accent words: 1 to 3 payoff words, each in `<span class="acc">`, coloured with the brand accent `var(--accent)` as **text colour only**: no highlight box, no background bar, no underline block, no second accent colour. Every other headline word uses one plain text colour that reads on the ground (near-white on dark, near-black on light).
 
-## The furniture (always in the same places)
+## The device
 
-- **Logo mark** top-left: `<img src="{{LOGO}}" class="logo">`, about 64 to 90 px tall. If has_logo is false, write the brand name as a small wordmark there instead.
-- **Bonus pill** top-right: a rounded pill with the bonus_pill text exactly as given (skip it when there is none).
-- **Proof line** with a small shield icon (inline SVG), near the headline or above the CTA, using the proof_line exactly as given.
-- **CTA button** in the brand accent colour (`var(--accent)`) with a white label (use dark text only if white would not read on that accent), then the `cta_note` in small text right under it.
-- **Footer** bottom-left: the brand name as a wordmark, with the website and the email (if the brand kit has one) in small text beside or under it.
+- One phone, tablet or laptop drawn in HTML/CSS, shown whole, upright (tilt at most 4 degrees). Near-black bezel (#0E0E10 to #1C1C1F), rounded corners (phone about 56 px, tablet about 36 px, laptop screen about 18 px plus a thin base), a soft shadow, a light screen. A phone has a small camera pill.
+- **The screen is synced to the headline**: the app view where the headline's problem gets fixed, using its key words, problem and fix together where possible. An app title bar (`screen.app_title`) and 3 to 5 simple elements (`screen.elements`): notification rows, chat bubbles, a calendar slot, a pipeline or checklist card, a status chip. Generic first names, 555 numbers and times only. No prices, counts, statistics, ratings, faces or real app logos. Screen text at least 20 px.
+- Screen colours: neutrals plus the brand colours; a small red dot for a problem and a small green check for done are fine. No other blues, greens or purples.
 
-## Layout
+## Layout grid (stay inside it, nothing touches or overlaps)
 
-- Phones and upright tablets sit beside the headline (`device_side` "right" or "left"; usually right), taking about 38 to 46 percent of the width.
-- Laptops and landscape tablets sit under the headline (`device_side` "below"), roughly 70 to 85 percent of the width.
-- 4:5 is 1080 x 1350 px; 1:1 is 1080 x 1080 px; 9:16 is 1080 x 1920 px.
-- **9:16 (Stories and Reels):** keep every word, the logo, the CTA and the device's screen content out of the top 14 percent (above y = 270 px) and the bottom 35 percent (below y = 1250 px), because the app covers them. Only the flat background and the lower body of the device may extend there. Write `story_9x16_note` as one sentence on what you moved or dropped to fit (for other formats, one sentence on how this card would adapt to 9:16).
+Margins are 64 px on every side. Elements never overlap each other, and the device never touches the footer or the canvas edge.
 
-## Brand
+**4:5 (1080 x 1350)**
+- Top bar y 64 to 140: logo left, offer pill right.
+- Phone or upright tablet (`device_side` "right"): x 600 to 1016, y 200 to 1150 at most. Left column x 64 to 560: headline from y 220, then proof line, CTA and note, all ending above y 1150.
+- Laptop or landscape tablet (`device_side` "below"): headline y 200 to about 480 across the width; CTA and note on one row under it (proof line beside or just above); device x 100 to 980, ending above y 1150.
+- Footer y 1200 to 1286: brand name, then website · email, left-aligned. Nothing else in this band.
 
-- Colours are CSS variables: `var(--deep)`, `var(--light)`, `var(--accent)`, `var(--primary)`, `var(--secondary)`, plus white, black, the bezel greys above and the flat `background_hex` you chose. Status colours on the screen (a red missed-call dot, a green check) are fine.
-- Fonts are `var(--font-heading)` and `var(--font-body)` in weights 400, 600, 700, 800 and 900. Use no other fonts.
+**1:1 (1080 x 1080)**: the same, with the device ending above y 900 and the footer y 950 to 1016.
+
+**9:16 (1080 x 1920)**: Stories and Reels cover the top 14 % and bottom 35 %. Top bar y 280 to 350; headline from y 400 (full width, 2 or 3 lines); then phone on the right x 600 to 1016 from y 760 (its lower body may run past y 1250, its screen content may not); left column x 64 to 560 from y 760: proof line, CTA, note, then the footer, all ending above y 1250. Laptops: under the CTA row, x 100 to 980, ending above y 1250, and the footer goes in the left column above it. Write `story_9x16_note` as one sentence on what you moved to fit (for other formats, one sentence on how this card adapts to 9:16).
+
+## Colours (brand fidelity)
+
+- Use only the brand colours: `var(--accent)`, `var(--primary)`, `var(--secondary)`, `var(--deep)`, `var(--light)`, plus white, black, neutral greys, the bezel greys, the small red and green status marks on the screen, and the one flat `background_hex`.
+- `background_hex`: one flat colour filling the canvas, no gradient, no photo, no pattern. Pick a dark or light ground as the request says, in the brand's family (a deep or very light tint of a brand colour), with strong contrast against the headline text and the accent.
+- The CTA button background is `var(--accent)` with a white label (dark label only if white would not read on that accent). Never another colour.
+
+## Brand fonts
+
+`var(--font-heading)` for the headline and wordmark, `var(--font-body)` for everything else, weights 400 to 900. No other fonts.
 
 ## Technical rules
 
-- `html`: only the inner content of `.canvas` (which has `position: relative` and `overflow: hidden`). Allowed elements: div, span, p, h1 to h6, strong, em, b, i, br, ul, ol, li, img, svg and its shapes (path, circle, rect, line, polyline, polygon, g, defs, linearGradient, radialGradient, stop; no svg <text>). Put styling in `css`; short inline style attributes are fine.
-- `css`: plain CSS scoped under `.canvas`. No @import, no @font-face, no external url(), no animations, no :hover.
-- No scripts, event handlers, links, forms, iframes or external resources. The only URL allowed is `{{LOGO}}`. There is no photo and no AI image in this design: never use `{{PHOTO}}` or `{{BG}}`.
-- Set `layout_name` to "device <phone|tablet|laptop> <right|left|below>", `image_shape` to "none", `photo_prompt` to an empty string, `visual_type` "n/a" and `brand_image_index` -1.
-- `hook` is the headline as one line, word for word.
+- `html`: only the inner content of `.canvas` (`position: relative`, `overflow: hidden`). Allowed elements: div, span, p, h1 to h6, strong, em, b, i, br, img, svg and its shapes (path, circle, rect, line, polyline, polygon, g, defs; no svg <text>). No ul, ol or li. Put styling in `css`; short inline style attributes are fine.
+- `css`: plain CSS scoped under `.canvas`. No @import, @font-face, external url(), animations or :hover.
+- No scripts, event handlers, links, forms, iframes or external resources. The only URL allowed is `{{LOGO}}` (`<img src="{{LOGO}}" class="logo">`, about 64 to 80 px tall; if has_logo is false, write the brand name as a wordmark with class "logo"). Never use `{{PHOTO}}` or `{{BG}}`.
+- `subhead` is always an empty string. `layout_name` is "device <phone|tablet|laptop> <right|left|below>", `image_shape` "none", `photo_prompt` empty, `visual_type` "n/a", `brand_image_index` -1. `hook` is the headline as one line, word for word.

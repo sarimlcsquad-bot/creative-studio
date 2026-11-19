@@ -181,6 +181,9 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onF
               {[...(c.flags || []), ...(c.compliance_notes || [])].length > 0 && (
                 <div className="notice"><strong>Check before running:</strong><ul>{[...new Set([...(c.flags || []), ...(c.compliance_notes || [])])].map((n, i) => <li key={i}>{n}</li>)}</ul></div>
               )}
+              {(c.design_check || []).length > 0 && (
+                <div className="notice"><strong>Design check (still not right after one fix-up pass):</strong><ul>{c.design_check.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
+              )}
               {(c.claims_used || []).length > 0 && <details className="small"><summary>Claims used from the brand kit</summary><ul>{c.claims_used.map((n, i) => <li key={i}>{n}</li>)}</ul></details>}
               {creative.prompt && <p className="small muted">Prompt: “{creative.prompt}”</p>}
               {c.image_error && <div className="notice"><strong>AI image failed, so the design has no image:</strong> {c.image_error}</div>}
