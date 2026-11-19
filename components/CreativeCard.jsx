@@ -4,7 +4,7 @@ import { renderCard, renderToBlob } from '@/lib/client/renderCard';
 import { api } from '@/lib/client/api';
 import { IconStar, IconTrash } from './Icons.jsx';
 
-export const METHOD_LABEL = { presold: 'Pre-Sold', '100m': '$100M Offers', mix: 'Mix' };
+export const METHOD_LABEL = { presold: 'Pre-Sold', '100m': '$100M Offers', mix: 'Both methods', both: 'Both methods' };
 const STAGE_LABEL = { unaware: 'Unaware', problem: 'Problem-aware', solution: 'Solution-aware', product: 'Product-aware', most: 'Most-aware', auto: 'Auto' };
 export { STAGE_LABEL };
 

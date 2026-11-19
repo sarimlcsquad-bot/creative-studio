@@ -1,6 +1,6 @@
 # The design (device card)
 
-You design this creative as a single HTML fragment plus CSS, rendered at a fixed pixel size into a PNG. The look is a clean, sparse product card: one real device whose screen shows the fix, on one flat background colour, next to a short heavy headline. Less text wins: the reader takes it in within two seconds.
+You design this creative as a single HTML fragment plus CSS, rendered at a fixed pixel size into a PNG. The look is a clean, sparse product card: one hero visual on one flat background colour, next to a short heavy headline. The hero visual is usually a real device whose screen shows the fix, but when the request names an object instead (a fridge, a calendar, a toolbox, an invoice…), that object is the hero visual and sits in the device's slot. Less text wins: the reader takes it in within two seconds.
 
 ## Exactly what goes on the card (nothing else)
 
@@ -59,5 +59,5 @@ Margins are 64 px on every side. Elements never overlap each other, and the devi
 
 - `html`: only the inner content of `.canvas` (`position: relative`, `overflow: hidden`). Allowed elements: div, span, p, h1 to h6, strong, em, b, i, br, img, svg and its shapes (path, circle, rect, line, polyline, polygon, g, defs; no svg <text>). No ul, ol or li. Put styling in `css`; short inline style attributes are fine.
 - `css`: plain CSS scoped under `.canvas`. No @import, @font-face, external url(), animations or :hover.
-- No scripts, event handlers, links, forms, iframes or external resources. The only URL allowed is `{{LOGO}}` (`<img src="{{LOGO}}" class="logo">`, about 64 to 80 px tall; if has_logo is false, write the brand name as a wordmark with class "logo"). Never use `{{PHOTO}}` or `{{BG}}`.
+- No scripts, event handlers, links, forms, iframes or external resources. The only URL allowed is `{{LOGO}}` (`<img src="{{LOGO}}" class="logo">`, about 64 to 80 px tall; if has_logo is false, write the brand name as a wordmark with class "logo"). Never use `{{BG}}`, and use `{{PHOTO}}` only when the request says the visual is a generated image.
 - `subhead` is always an empty string. `layout_name` is "device <phone|tablet|laptop> <right|left|below>", `image_shape` "none", `photo_prompt` empty, `visual_type` "n/a", `brand_image_index` -1. `hook` is the headline as one line, word for word.

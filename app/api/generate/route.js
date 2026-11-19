@@ -16,7 +16,7 @@ export const POST = handler(async (request) => {
   const jobs = planJobs(req, brand);
   const rows = check(await db().from('creatives').insert(jobs.map((j) => ({
     brand_id: brand.id, source: req.source, created_by: req.created_by, mode: req.mode, prompt: req.prompt,
-    format: j.format, photo_source: j.photo_source, stage: req.stage, method: j.method, status: 'generating',
+    format: j.format, photo_source: j.photo_source, stage: req.stage, method: j.method === 'both' ? 'mix' : j.method, status: 'generating',
   }))).select('*'));
   const { headlines, layouts, backgrounds } = await recentFor(brand.id);
   // Answer the browser now; write the creatives in the background, in parallel.
