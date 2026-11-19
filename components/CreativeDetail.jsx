@@ -1,24 +1,25 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
 import Modal from './Modal.jsx';
-import { IconStar } from './Icons.jsx';
+import { IconStar, IconTrash } from './Icons.jsx';
 import { renderCard, FORMATS } from '@/lib/client/renderCard';
 import { editorDoc, toStoredHtml } from '@/lib/client/renderHtml';
 import { api } from '@/lib/client/api';
 import { toast } from './Toasts.jsx';
 import { STAGE_LABEL, METHOD_LABEL } from './CreativeCard.jsx';
 
-const TERM_LABEL = { dream_outcome: 'Dream outcome', likelihood: 'Perceived likelihood', time_delay: 'Time delay', effort: 'Effort & sacrifice' };
-
-function CopyField({ label, value }) {
+function CopyField({ label, value, long }) {
+  const [all, setAll] = useState(false);
   if (!value) return null;
+  const clamp = long && !all && value.length > 260;
   return (
     <div className="copy-field">
       <div className="copy-head">
         <span>{label}</span>
-        <button className="btn ghost xs" onClick={() => navigator.clipboard?.writeText(value).then(() => toast(`${label} copied`))}>Copy</button>
+        <button className="btn xs" onClick={() => navigator.clipboard?.writeText(value).then(() => toast(`${label} copied`))}>Copy</button>
       </div>
-      <pre>{value}</pre>
+      <pre className={clamp ? 'clamped' : ''}>{value}</pre>
+      {long && value.length > 260 && <button className="link-btn copy-more" onClick={() => setAll((x) => !x)}>{all ? 'Show less' : 'Show all'}</button>}
     </div>
   );
 }
@@ -99,17 +100,18 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onF
 
   const c = creative.concept || {};
   const copy = creative.ad_copy || {};
+  const checks = [...new Set([...(c.flags || []), ...(c.compliance_notes || []), ...(c.design_check || []), ...(c.image_error ? [`The AI image failed, so the design has no image: ${c.image_error}`] : [])])];
 
   return (
-    <Modal wide title={`${brand?.name || 'Creative'} · ${creative.format}`} onClose={onClose}
+    <Modal wide title={brand?.name || 'Creative'} onClose={onClose}
       footer={<>
         {confirmDel
           ? <span className="row-gap center"><span className="small">Delete this creative?</span>
               <button className="btn ghost sm" onClick={() => setConfirmDel(false)}>Keep it</button>
               <button className="btn danger-fill sm" onClick={onDelete}>Delete</button></span>
-          : <button className="btn ghost danger" onClick={() => setConfirmDel(true)}>Delete</button>}
-        <button className={`btn ghost fav-btn ${fav ? 'on' : ''}`} onClick={() => onFavorite(!fav)} aria-pressed={fav}>
-          <IconStar filled={fav} /> {fav ? 'Favorite' : 'Add to favorites'}</button>
+          : <button className="btn square danger" onClick={() => setConfirmDel(true)} aria-label="Delete creative" title="Delete"><IconTrash /></button>}
+        <button className={`btn square fav-btn ${fav ? 'on' : ''}`} onClick={() => onFavorite(!fav)} aria-pressed={fav}
+          aria-label={fav ? 'Remove from favorites' : 'Add to favorites'} title={fav ? 'Remove from favorites' : 'Add to favorites'}><IconStar filled={fav} /></button>
         <span className="spacer" />
         {editing
           ? <><button className="btn ghost" onClick={() => { setSpec(creative.spec); setEditing(false); }}>Cancel</button>
@@ -152,42 +154,33 @@ export default function CreativeDetail({ creative, brand, onClose, onDelete, onF
             </div>
           ) : (
             <>
-              <div className="chips">
-                <span className={`chip src-${creative.source}`}>{creative.source === 'agency' ? 'Agency owners' : 'Business owners'}</span>
-                {(c.method || creative.method) && <span className="chip method">{METHOD_LABEL[c.method || creative.method]}</span>}
-                {c.stage && <span className="chip">{STAGE_LABEL[c.stage] || c.stage}</span>}
-                {c.psychographic_layer && c.psychographic_layer !== 'n/a' && <span className="chip">{c.psychographic_layer}</span>}
-                {c.value_term && c.value_term !== 'n/a' && <span className="chip">{TERM_LABEL[c.value_term] || c.value_term}</span>}
-                {c.tier && <span className="chip">{c.tier} tier</span>}
+              <p className="detail-meta">{creative.source === 'agency' ? 'Agency owners' : 'Business owners'} · {METHOD_LABEL[c.method || creative.method] || 'Pre-Sold'} · {creative.format}</p>
+              {checks.length > 0 && (
+                <details className="wz-check">
+                  <summary>{checks.length === 1 ? '1 thing to check before running' : `${checks.length} things to check before running`}</summary>
+                  <ul>{checks.map((n, i) => <li key={i}>{n}</li>)}</ul>
+                </details>
+              )}
+              <h3 className="detail-h">Ad copy</h3>
+              <CopyField label="Primary text" value={copy.primary_text} long />
+              <div className="grid-2 tight">
+                <CopyField label="Headline" value={copy.headline} />
+                <CopyField label="Description" value={copy.description} />
               </div>
-              {c.hook && <p><strong>Hook:</strong> {c.hook}</p>}
-              {c.layout_name && <p className="small muted">Layout: {c.layout_name}</p>}
-              {c.device && (
-                <p className="small"><strong>Chosen look:</strong> {c.device} {c.device_side === 'below' ? 'under the headline' : `on the ${c.device_side}`}
-                  {c.background_hex && <> on <span className="wz-swatch inline" style={{ background: c.background_hex }} /> {c.background_hex}</>}
-                  {c.screen?.app_title && <>, screen “{c.screen.app_title}”</>}</p>
-              )}
-              {c.story_9x16_note && <p className="small muted">9:16 note: {c.story_9x16_note}</p>}
-              {c.angle && <p><strong>Angle:</strong> {c.angle}</p>}
-              {c.specific_object && <p><strong>Specific object:</strong> {c.specific_object}</p>}
-              {c.magic_name && <p><strong>Offer name (needs approval):</strong> {c.magic_name}</p>}
-              {c.stack_items?.length > 0 && <p><strong>Stack:</strong> {c.stack_items.join(' · ')}</p>}
-              {c.enhancers_used?.length > 0 && <p className="small"><strong>Enhancers:</strong> {c.enhancers_used.join('; ')}</p>}
-              {c.rationale && <p className="muted">{c.rationale}</p>}
-              <CopyField label="Primary text" value={copy.primary_text} />
-              <CopyField label="Headline" value={copy.headline} />
-              <CopyField label="Description" value={copy.description} />
-              {copy.cta_button && <p className="small"><strong>Meta button:</strong> {copy.cta_button.replace(/_/g, ' ')}</p>}
-              {[...(c.flags || []), ...(c.compliance_notes || [])].length > 0 && (
-                <div className="notice"><strong>Check before running:</strong><ul>{[...new Set([...(c.flags || []), ...(c.compliance_notes || [])])].map((n, i) => <li key={i}>{n}</li>)}</ul></div>
-              )}
-              {(c.design_check || []).length > 0 && (
-                <div className="notice"><strong>Design check (still not right after one fix-up pass):</strong><ul>{c.design_check.map((n, i) => <li key={i}>{n}</li>)}</ul></div>
-              )}
-              {(c.claims_used || []).length > 0 && <details className="small"><summary>Claims used from the brand kit</summary><ul>{c.claims_used.map((n, i) => <li key={i}>{n}</li>)}</ul></details>}
-              {creative.prompt && <p className="small muted">Prompt: “{creative.prompt}”</p>}
-              {c.image_error && <div className="notice"><strong>AI image failed, so the design has no image:</strong> {c.image_error}</div>}
-              {creative.photo_prompt && <details className="small"><summary>{c.visual_type && c.visual_type !== 'photo' && c.visual_type !== 'n/a' ? 'Image prompt' : 'Photo prompt'}</summary><p className="muted">{creative.photo_prompt}</p></details>}
+              {copy.cta_button && <p className="small muted">Facebook button: {copy.cta_button.replace(/_/g, ' ').toLowerCase()}</p>}
+              <details className="wz-fold">
+                <summary>Details: angle, hook and visual</summary>
+                {c.angle && <p><strong>Angle:</strong> {c.angle}</p>}
+                {c.hook && <p><strong>Hook:</strong> {c.hook}</p>}
+                {(c.visual_object || c.device) && <p><strong>Visual:</strong> {c.visual_object || `${c.device} screen${c.screen?.app_title ? `, ${c.screen.app_title}` : ''}`}</p>}
+                {c.stage && <p><strong>Stage:</strong> {STAGE_LABEL[c.stage] || c.stage}</p>}
+                {c.magic_name && <p><strong>Offer name (needs approval):</strong> {c.magic_name}</p>}
+                {c.stack_items?.length > 0 && <p><strong>Stack:</strong> {c.stack_items.join(' · ')}</p>}
+                {c.rationale && <p className="muted">{c.rationale}</p>}
+                {(c.claims_used || []).length > 0 && <p className="small"><strong>Claims used from the brand kit:</strong> {c.claims_used.join('; ')}</p>}
+                {creative.prompt && <p className="small muted">Prompt: “{creative.prompt}”</p>}
+                {creative.photo_prompt && <p className="small muted">Image prompt: {creative.photo_prompt}</p>}
+              </details>
             </>
           )}
         </div>

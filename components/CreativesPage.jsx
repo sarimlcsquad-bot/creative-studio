@@ -4,18 +4,19 @@ import { api } from '@/lib/client/api';
 import CreativeCard from './CreativeCard.jsx';
 import CreativeDetail from './CreativeDetail.jsx';
 import { toast } from './Toasts.jsx';
-import { IconSpark, IconStar } from './Icons.jsx';
+import { IconStar } from './Icons.jsx';
+
+const IconPlus = () => <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" /></svg>;
 
 const SUBTABS = [
-  ['all', 'All creatives'],
-  ['agency', 'For agency owners'],
-  ['owner', 'For business owners'],
+  ['all', 'All'],
+  ['agency', 'Agency owners'],
+  ['owner', 'Business owners'],
 ];
 
 export default function CreativesPage({ brands, version, onGenerate, onGoBrands }) {
   const [sub, setSub] = useState('all');
   const [brandId, setBrandId] = useState('');
-  const [status, setStatus] = useState('');
   const [favOnly, setFavOnly] = useState(false);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +49,7 @@ export default function CreativesPage({ brands, version, onGenerate, onGoBrands 
     owner: items.filter((c) => c.source === 'owner').length,
   }), [items]);
 
-  const shown = items.filter((c) => (!status || c.status === status) && (!favOnly || c.concept?.favorite));
+  const shown = items.filter((c) => !favOnly || c.concept?.favorite);
   const favCount = items.filter((c) => c.concept?.favorite).length;
 
   const remove = async (c) => {
@@ -77,46 +78,33 @@ export default function CreativesPage({ brands, version, onGenerate, onGoBrands 
   return (
     <section className="page">
       <div className="page-head">
-        <div>
-          <h1>Creatives</h1>
-          <p className="muted">Every creative made for every brand, by agencies and owners.</p>
-        </div>
-        <div className="row-gap center">
-          <button className="btn primary" onClick={onGenerate}><IconSpark /> Generate</button>
-        </div>
-      </div>
-
-      <div className="subtabs" role="tablist">
-        {SUBTABS.map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={sub === k} className={sub === k ? 'active' : ''} onClick={() => setSub(k)}>
-            {label}{sub === 'all' && k !== 'all' ? <span className="count">{counts[k]}</span> : null}
-          </button>
-        ))}
+        <h1>Creatives</h1>
+        <button className="btn primary lg" onClick={onGenerate}><IconPlus /> New creatives</button>
       </div>
 
       <div className="filters">
+        <div className="seg" role="tablist" aria-label="Audience">
+          {SUBTABS.map(([k, label]) => (
+            <button key={k} role="tab" aria-selected={sub === k} className={sub === k ? 'on' : ''} onClick={() => setSub(k)}>
+              {label}{sub === 'all' && k !== 'all' && counts[k] ? <span className="count">{counts[k]}</span> : null}
+            </button>
+          ))}
+        </div>
         <select value={brandId} onChange={(e) => setBrandId(e.target.value)} aria-label="Filter by brand">
           <option value="">All brands</option>
           {brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
         </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value)} aria-label="Filter by status">
-          <option value="">Any status</option>
-          <option value="ready">Ready</option>
-          <option value="generating">Generating</option>
-          <option value="failed">Failed</option>
-        </select>
-        <button className={`btn sm fav-filter ${favOnly ? 'on' : ''}`} onClick={() => setFavOnly((v) => !v)} aria-pressed={favOnly}>
-          <IconStar filled={favOnly} /> Favorites <span className="count">{favCount}</span>
+        <button className={`btn fav-filter ${favOnly ? 'on' : ''}`} onClick={() => setFavOnly((v) => !v)} aria-pressed={favOnly}>
+          <IconStar filled={favOnly} /> Favorites{favCount ? <span className="count">{favCount}</span> : null}
         </button>
-        <button className="btn ghost sm" onClick={() => load()}>Refresh</button>
       </div>
 
       {loading && !items.length ? <div className="empty">Loading creatives…</div> : null}
       {!loading && !shown.length ? (
         <div className="empty">
           <h3>{favOnly ? 'No favorites here yet' : 'No creatives here yet'}</h3>
-          <p>{favOnly ? 'Tap the star on a creative to add it to your favorites.' : 'Generate a random creative for a brand, or describe what you want in a prompt.'}</p>
-          <button className="btn primary" onClick={onGenerate}><IconSpark /> Generate</button>
+          <p>{favOnly ? 'Tap the star on a creative to add it to your favorites.' : 'Make your first ones: pick a brand and Claude suggests angles, hooks and visuals.'}</p>
+          <button className="btn primary" onClick={onGenerate}><IconPlus /> New creatives</button>
         </div>
       ) : null}
 

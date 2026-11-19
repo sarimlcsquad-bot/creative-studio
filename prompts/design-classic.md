@@ -4,7 +4,7 @@ The card matches the house performance-card register: a dark "deep" ground (or a
 
 Blocks you may use, in order, top to bottom:
 - headline: `lines` = 2 or 3 strings. Prefix the payoff line with "accent:" (for example "accent:more jobs."). Each line at most about 22 characters; the renderer uppercases. Use a full stop at the end of a sentence, like "Stop losing leads."
-- sub: `text` = one or two plain sentences, at most about 150 characters.
+- sub: `text` = one or two plain sentences, at most about 150 characters. Every card has exactly one sub block (the body text); when the request gives a support line, use it word for word.
 - checklist: `items` = 2 to 4 short benefit phrases, each at most about 32 characters, no ending punctuation.
 - grid: `items` = 6 or 9 service names, each at most about 30 characters. Only use a grid with photo_layout "none".
 - cta: `label` = the button text, at most about 28 characters. Use the brand's default CTA unless the stage calls for something softer.

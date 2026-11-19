@@ -23,7 +23,7 @@ Pick a layout that suits the angle, and do not repeat the layouts listed as alre
 
 ## Typography and copy on the card
 
-- One clear hierarchy: a dominant headline (usually 64 to 130 px, 800 or 900 weight, tight line-height around 1.0 to 1.1), an optional short support line (28 to 40 px), an optional device (list, stat, offer), and a CTA (a pill or button shape, 28 to 36 px text).
+- One clear hierarchy: a dominant headline (usually 64 to 130 px, 800 or 900 weight, tight line-height around 1.0 to 1.1), a short body line under the headline that is ALWAYS present (one or two sentences, 28 to 40 px; use the given support line word for word when the request has one), an optional device (list, stat, offer), and a CTA (a pill or button shape, 28 to 36 px text).
 - Minimum text size 24 px. Keep the total words on the card low: a headline of up to about 10 words, support up to about 25 words, list items up to about 5 words each, at most 4 items.
 - Highlight the payoff words of the headline with the accent colour, a highlight bar or an underline.
 - Use the brand's default CTA text for the button unless the stage calls for something softer.

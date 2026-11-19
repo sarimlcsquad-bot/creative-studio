@@ -37,8 +37,6 @@ export default function CreativeCard({ creative, brand, onOpen, onFavorite, onDe
   }, [creative, brand]);
 
   const date = new Date(creative.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  const stage = creative.concept?.stage || creative.stage;
-  const method = creative.concept?.method || creative.method;
 
   return (
     <article className={`creative-card ${creative.status} ${fav ? 'fav' : ''}`}>
@@ -59,27 +57,18 @@ export default function CreativeCard({ creative, brand, onOpen, onFavorite, onDe
           </div>
         </div>
       )}
-      <button className="creative-thumb" onClick={onOpen} disabled={creative.status === 'generating'} aria-label="Open creative">
+      <button className="creative-thumb" onClick={onOpen} disabled={creative.status === 'generating'} aria-label={`Open creative for ${brand?.name || "brand"}`}>
         {creative.status === 'ready' && <canvas ref={ref} />}
         {creative.status === 'generating' && (
-          <div className="generating"><span className="spinner" aria-hidden="true" /><span>Generating…</span><small>Claude is writing it. Usually under two minutes.</small></div>
+          <div className="generating"><span className="dots" aria-hidden="true"><span /><span /><span /></span><span>Making it…</span><small>Usually under two minutes</small></div>
         )}
         {creative.status === 'failed' && (
           <div className="failed-box"><strong>Generation failed</strong><small>{creative.error || 'Unknown error'}</small></div>
         )}
       </button>
       <div className="creative-meta">
-        <div className="chips">
-          <span className={`chip src-${creative.source}`}>{creative.source === 'agency' ? 'Agency owners' : 'Business owners'}</span>
-          {method && <span className="chip method">{METHOD_LABEL[method] || method}</span>}
-          {stage && <span className="chip">{STAGE_LABEL[stage] || stage}</span>}
-          <span className="chip">{creative.format}</span>
-        </div>
-        <div className="creative-line">
-          <strong>{brand?.name || 'Unknown brand'}</strong>
-          <span className="muted small">{creative.created_by ? `${creative.created_by} · ` : ''}{date}</span>
-        </div>
-        {creative.mode === 'prompt' && creative.prompt && <p className="small muted clamp">“{creative.prompt}”</p>}
+        <strong>{brand?.name || 'Unknown brand'}</strong>
+        <span className="muted small">{creative.format} · {date}</span>
       </div>
     </article>
   );

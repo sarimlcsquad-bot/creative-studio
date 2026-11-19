@@ -1,6 +1,5 @@
 'use client';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import Modal from './Modal.jsx';
+import React, { useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/client/api';
 import { toast } from './Toasts.jsx';
 import { IconSpark } from './Icons.jsx';
@@ -43,7 +42,6 @@ function Chat({ messages, onSend, busy, placeholder, label = 'Ask Claude for som
   const send = () => { const t = text.trim(); if (!t || busy) return; setText(''); onSend(t); };
   return (
     <div className="wz-chat">
-      <div className="wz-chat-label">{label}</div>
       {(messages.length > 0 || busy) && (
         <div className="wz-chat-log" ref={logRef} aria-live="polite">
           {messages.map((m, i) => <div key={i} className={`wz-msg ${m.role}`}>{m.text}</div>)}
@@ -51,11 +49,10 @@ function Chat({ messages, onSend, busy, placeholder, label = 'Ask Claude for som
         </div>
       )}
       <div className="wz-chat-input">
-        <textarea rows={2} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} aria-label={label}
+        <textarea rows={1} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} aria-label={label}
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }} />
-        <button className="wz-send" onClick={send} disabled={!!busy || !text.trim()} aria-label="Send"><IconSend /> <span>Send</span></button>
+        <button className="wz-send" onClick={send} disabled={!!busy || !text.trim()}><IconSend /> <span>Send</span></button>
       </div>
-      <div className="wz-chat-hint">Enter to send · Shift + Enter for a new line</div>
     </div>
   );
 }
@@ -79,9 +76,9 @@ function VariantTabs({ count, active, onPick, done, busyAt, title }) {
   );
 }
 
-const blankChats = () => ({ hooks: [], content: [], assets: [], screens: [] });
+const blankChats = () => ({ angles: [], hooks: [], content: [], assets: [], screens: [] });
 const blank = () => ({
-  angle: null, ownAngle: false, hooks: [], hook: '', content: null,
+  angles: [], angle: null, ownAngle: false, hooks: [], hook: '', content: null,
   visual: '', ideas: [], ideaAt: -1, photoUrl: '', screens: [], screenAt: -1,
   designNotes: '', chats: blankChats(), madeFor: {},
 });
@@ -100,7 +97,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const [aiImages, setAiImages] = useState(false);
   useEffect(() => { api.config().then((c) => setAiImages(!!c.ai_images)); }, []);
 
-  // One set of choices per creative (A, B, C…); angles are one shared list each creative picks from.
+  // One independent set of suggestions and choices per creative (A, B, C…).
   const [vs, setVs] = useState([blank()]);
   const vsRef = useRef(vs);
   vsRef.current = vs;
@@ -109,9 +106,6 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const upd = (i, patch) => setVs((list) => list.map((v, j) => (j === i ? { ...v, ...(typeof patch === 'function' ? patch(v) : patch) } : v)));
   const say = (chats, key, role, text) => (text ? { ...chats, [key]: [...chats[key], { role, text }] } : chats);
 
-  const [angles, setAngles] = useState([]);
-  const [angleChat, setAngleChat] = useState([]);
-  const [anglesFor, setAnglesFor] = useState('');
 
   const [step, setStep] = useState('setup');
   const [maxAt, setMaxAt] = useState(0);
@@ -144,16 +138,22 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const contentKey = (x) => `${hookKey(x)}|${x.hook}`;
 
   // ---- loaders -------------------------------------------------------------
-  const loadAngles = async (direction = '') => {
-    const r = await ask('all:angles', {
-      step: 'angles', direction, notes: notes(), history: history(angleChat, direction),
-      avoid: angles.map((a) => a.title), how_many: Math.max(5, count + 2),
+  // Angles belong to one creative: asking again on B never touches A's list or A's choice.
+  const loadAngles = async (i, direction = '', avoidExtra = []) => {
+    const x = vsRef.current[i];
+    const r = await ask(`${i}:angles`, {
+      step: 'angles', direction, notes: notes(), history: history(x.chats.angles, direction),
+      avoid: [...x.angles.map((a) => a.title), ...avoidExtra], how_many: 5,
     });
     if (r) {
-      setAngles((list) => merge(list, r, r.angles));
-      if (r.action !== 'add') setVs((list) => list.map((x) => (x.ownAngle ? x : { ...x, angle: null })));
-      setAngleChat((c) => (r.reply ? [...c, { role: 'claude', text: r.reply }] : c));
+      upd(i, (y) => {
+        let list = merge(y.angles, r, r.angles);
+        // A new list keeps this creative's chosen angle at the top, so the choice is not lost.
+        if (r.action !== 'add' && y.angle && !y.ownAngle && !list.includes(y.angle)) list = [y.angle, ...list];
+        return { angles: list, chats: say(y.chats, 'angles', 'claude', r.reply) };
+      });
     }
+    return r?.angles || [];
   };
   const loadHooks = async (i, direction = '', avoidExtra = []) => {
     const x = vsRef.current[i];
@@ -226,10 +226,11 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   // Entering a step loads what each creative still needs (all in parallel).
   const enter = (n) => {
     const list = vsRef.current;
-    if (n === 'angle' && anglesFor !== setupKey) {
-      setAnglesFor(setupKey); setAngles([]); setAngleChat([]);
-      setVs((l) => l.map((x) => (x.ownAngle ? x : { ...x, angle: null })));
-      loadAngles();
+    if (n === 'angle') {
+      const stale = list.map((x, i) => (x.madeFor.angles !== setupKey ? i : -1)).filter((i) => i >= 0);
+      stale.forEach((i) => upd(i, (y) => ({ angles: [], angle: y.ownAngle ? y.angle : null, chats: { ...y.chats, angles: [] }, madeFor: { ...y.madeFor, angles: setupKey } })));
+      // One after another, so each creative gets different angles from the others.
+      (async () => { let seen = []; for (const i of stale) seen = [...seen, ...(await loadAngles(i, '', seen)).map((a) => a.title)]; })();
     }
     if (n === 'hook') {
       const stale = list.map((x, i) => (x.madeFor.hooks !== hookKey(x) ? i : -1)).filter((i) => i >= 0);
@@ -341,398 +342,420 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
     finally { setStarting(''); }
   };
 
-  const footer = (
-    <>
-      {at > 0 && <button className="btn ghost" onClick={back} disabled={!!starting}>Back</button>}
-      <span className="spacer" />
-      {starting && <Loading text={starting} />}
-      <button className="btn ghost" onClick={onClose}>Cancel</button>
-      {step === 'generate'
-        ? <button className="btn primary" onClick={generate} disabled={!!starting}><IconSpark /> Generate {total > 1 ? `${total} creatives` : 'creative'}</button>
-        : <button className="btn primary" onClick={next} disabled={!!starting}>Next: {LABEL[steps[at + 1]]}</button>}
-    </>
-  );
-
-  const summary = useMemo(() => [
-    count > 1 ? ['Creative', LETTERS[tab]] : null,
-    mode === 'prompt' && prompt.trim() ? ['Prompt', prompt] : null,
-    mode === 'random' && v.angle?.title ? ['Angle', v.angle.title] : null,
-    v.hook ? ['Hook', v.hook] : null,
-  ].filter(Boolean), [mode, prompt, v.angle, v.hook, tab, count]);
+  const [leaving, setLeaving] = useState(false);
+  const [editVisual, setEditVisual] = useState(false);
+  useEffect(() => { setEditVisual(false); }, [tab, step]);
+  const cancel = () => (maxAt > 0 && !leaving ? setLeaving(true) : onClose());
 
   const tabs = (s, kind) => (
     <VariantTabs count={count} active={tab} onPick={setTab} done={(i) => okFor[s](vs[i] || blank())} busyAt={(i) => isBusy(`${i}:${kind}`)} />
   );
-  const usedBy = (a) => vs.map((x, i) => (x.angle === a ? LETTERS[i] : null)).filter(Boolean);
+
+  // One short line of context for the step, instead of a summary box.
+  const context = step === 'hook' && mode === 'random' ? v.angle?.title && `Angle: ${v.angle.title}`
+    : step === 'hook' && mode === 'prompt' ? prompt.trim() && `Your idea: ${prompt.trim()}`
+    : (step === 'content' || step === 'assets') ? v.hook && `Hook: ${v.hook}` : '';
+
+  const TITLE = {
+    setup: "Let's set up your ads",
+    angle: count > 1 ? `Pick an angle for Creative ${LETTERS[tab]}` : 'Pick an angle',
+    hook: count > 1 ? `Pick a hook for Creative ${LETTERS[tab]}` : 'Pick a hook',
+    content: 'Check the words',
+    assets: 'Choose the visual',
+    generate: count > 1 ? `Review ${count} creatives` : 'Review and generate',
+  };
+
+  const accent = isHex(brand?.colors?.accent) ? brand.colors.accent : '#0F766E';
+  const chatFor = {
+    angle: <Chat messages={v.chats.angles} busy={isBusy(`${tab}:angles`)} onSend={chatSend('angles', loadAngles)} label="Ask Claude for different angles"
+      placeholder={`Ask for different angles${count > 1 ? ` for Creative ${LETTERS[tab]}` : ''}, e.g. agency owners who just lost their biggest client`} />,
+    hook: <Chat messages={v.chats.hooks} busy={isBusy(`${tab}:hooks`)} onSend={chatSend('hooks', loadHooks)} label="Ask Claude for different hooks"
+      placeholder={`Ask for different hooks${count > 1 ? ` for Creative ${LETTERS[tab]}` : ''}, e.g. short questions about missed calls at night`} />,
+    content: <Chat messages={v.chats.content} busy={isBusy(`${tab}:content`)} onSend={chatSend('content', loadContent)} label="Ask Claude to change the words"
+      placeholder="e.g. make the headline shorter and mention the free setup" />,
+    assets: isDevice
+      ? <Chat messages={v.chats.screens} busy={isBusy(`${tab}:screens`)} onSend={chatSend('screens', loadScreens)} label="Describe a different visual"
+          placeholder="Describe a different visual, e.g. a coffee mug with a missed-call note, light background" />
+      : usesAiOf(v) ? <Chat messages={v.chats.assets} busy={isBusy(`${tab}:assets`)} onSend={chatSend('assets', loadIdeas)} label="Describe a different image"
+          placeholder="e.g. a 3D phone with three missed calls in the brand colours" /> : null,
+  };
+
+  const sc = v.screens[v.screenAt];
 
   return (
-    <Modal wide title={count > 1 ? `Create ${count} creatives` : 'Create a creative'} onClose={onClose} footer={footer}>
-      <ol className="wz-steps" aria-label="Steps">
-        {steps.map((s, i) => {
-          const reachable = i <= maxAt;
-          return (
-            <li key={s} className={`${i < at ? 'done' : i === at ? 'on' : ''} ${reachable && i !== at ? 'link' : ''}`}>
-              <button onClick={() => go(s)} disabled={!reachable || i === at} aria-current={i === at ? 'step' : undefined}
-                title={reachable ? `Go to ${LABEL[s]}` : 'Finish the earlier steps first'}>
-                <span>{i < at ? '✓' : i + 1}</span>{LABEL[s]}
-              </button>
-            </li>
-          );
-        })}
-      </ol>
-
-      {step === 'setup' && (
-        <div className="wz-body">
-          <div className="wz-section">
-            <h3>Who is this ad for?</h3>
-            <div className="segmented" role="radiogroup" aria-label="Who is this ad for">
-              <button role="radio" aria-checked={source === 'owner'} className={source === 'owner' ? 'on' : ''} onClick={() => setSource('owner')}>
-                <strong>Business owners</strong><small>Talks about calls, customers, bookings and jobs</small>
-              </button>
-              <button role="radio" aria-checked={source === 'agency'} className={source === 'agency' ? 'on' : ''} onClick={() => setSource('agency')}>
-                <strong>Agency owners</strong><small>Talks about clients, builds, delivery and capacity</small>
-              </button>
+    <div className="wz-page" role="dialog" aria-modal="true" aria-label={count > 1 ? `Create ${count} creatives` : 'Create a creative'}>
+      <nav className="wz-rail" aria-label="Steps">
+        <div className="wz-rail-title">{count > 1 ? `${count} new creatives` : 'New creative'}{brand ? <small>{brand.name}</small> : null}</div>
+        <ol className="wz-steplist">
+          {steps.map((s, i) => {
+            const reachable = i <= maxAt;
+            const state = i === at ? 'on' : i < at || (reachable && stepOk(s)) ? 'done' : '';
+            return (
+              <li key={s}>
+                <button className={`wz-step ${state}`} onClick={() => go(s)} disabled={!reachable || i === at} aria-current={i === at ? 'step' : undefined}>
+                  <span className="wz-step-num">{state === 'done' ? <IconCheck /> : i + 1}</span>{LABEL[s]}
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        <div className="wz-rail-foot">
+          {leaving ? (
+            <div className="wz-leave">
+              <span>Discard what you chose?</span>
+              <div className="row-gap"><button className="btn sm danger-fill" onClick={onClose}>Discard</button><button className="btn sm" onClick={() => setLeaving(false)}>Keep going</button></div>
             </div>
-          </div>
-          <div className="wz-section">
-            <h3>Brand and starting point</h3>
-            <select value={brandId} onChange={(e) => setBrandId(e.target.value)} aria-label="Brand">{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
-            <div className="segmented" role="radiogroup" aria-label="Start from" style={{ marginTop: 10 }}>
-              <button role="radio" aria-checked={mode === 'random'} className={mode === 'random' ? 'on' : ''} onClick={() => setMode('random')}>
-                <strong>Random</strong><small>Claude suggests angles, then hooks</small>
-              </button>
-              <button role="radio" aria-checked={mode === 'prompt'} className={mode === 'prompt' ? 'on' : ''} onClick={() => setMode('prompt')}>
-                <strong>With a prompt</strong><small>Your direction; Claude goes straight to hooks</small>
-              </button>
-            </div>
-          </div>
-          <div className="wz-section">
-            <h3>How many creatives?</h3>
-            <div className="wz-count">
-              <button className="wz-count-btn" onClick={() => setCount((n) => Math.max(1, n - 1))} disabled={count <= 1} aria-label="Fewer">−</button>
-              <input type="number" min={1} max={10} value={count} aria-label="Number of creatives"
-                onChange={(e) => setCount(Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)))} />
-              <button className="wz-count-btn" onClick={() => setCount((n) => Math.min(10, n + 1))} disabled={count >= 10} aria-label="More">+</button>
-              <span className="muted small">
-                {count > 1 ? `Each step gets tabs ${LETTERS.slice(0, count).split('').join(', ')} so you choose for every creative.` : 'Up to 10.'}
-                {format === 'both' ? ` ${total} images in all (each in 4:5 and 9:16).` : ''}
-              </span>
-            </div>
-          </div>
-          <details className="wz-more">
-            <summary>Options: {METHOD_SHORT[method]} · {FORMAT_LABEL[format]} · {{ device: 'Clean card', free: 'Free design', classic: 'Classic card' }[design]} · {STAGE_SHORT[stage]}</summary>
-            <div className="grid-2">
-              <label className="field"><span>Method</span>
-                <select value={method} onChange={(e) => setMethod(e.target.value)}>
-                  <option value="presold">Pre-Sold (Jeff Miller)</option>
-                  <option value="100m">$100M Offers (Hormozi)</option>
-                  <option value="both">Both skills together</option>
-                </select>
-              </label>
-              <label className="field"><span>Format</span>
-                <select value={format} onChange={(e) => setFormat(e.target.value)}>
-                  <option value="4:5">Portrait 4:5 (Feed)</option><option value="9:16">Vertical 9:16 (Stories, Reels)</option>
-                  <option value="both">4:5 + 9:16 (one of each)</option>
-                </select>
-              </label>
-              <label className="field"><span>Design</span>
-                <select value={design} onChange={(e) => setDesign(e.target.value)}>
-                  <option value="device">Clean card with one hero visual (device or object)</option><option value="free">Free design (Claude picks the style)</option><option value="classic">Classic card</option>
-                </select>
-              </label>
-              <label className="field"><span>Awareness stage</span>
-                <select value={stage} onChange={(e) => setStage(e.target.value)}>{STAGES.map(([val, l]) => <option key={val} value={val}>{l}</option>)}</select>
-              </label>
-            </div>
-          </details>
-          <div className="wz-section">
-            <h3>{mode === 'prompt' ? 'Your prompt' : 'Prompt (optional)'}</h3>
-            <div className="wz-input-box">
-              <textarea className="wz-setup-prompt" rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label="Prompt"
-                placeholder={mode === 'prompt'
-                  ? 'Type your direction here, e.g. Fall promo: first month half price for new agencies.'
-                  : 'Type anything Claude should keep in mind, e.g. Focus on agencies that just signed their first client.'} />
-            </div>
-          </div>
+          ) : <button className="btn wz-cancel" onClick={cancel}>Cancel</button>}
         </div>
-      )}
+      </nav>
 
-      {step !== 'setup' && step !== 'angle' && summary.length > 0 && (
-        <div className="wz-summary">{summary.map(([k, val]) => <div key={k}><strong>{k}:</strong> {val}</div>)}</div>
-      )}
+      <main className="wz-main">
+        <header className="wz-top">
+          <div className="wz-top-line">
+            <h1>{TITLE[step]}</h1>
+            {context && <span className="wz-context" title={context}>{context}</span>}
+          </div>
+          {step !== 'setup' && tabs(step, { angle: 'angles', hook: 'hooks', content: 'content', assets: isDevice ? 'screens' : 'assets', generate: 'none' }[step])}
+        </header>
 
-      {step === 'angle' && (
-        <div className="wz-body">
-          <div className="wz-head"><h3>{count > 1 ? 'Pick an angle for each creative' : 'Pick an angle'}</h3>
-            <button className="link-btn" onClick={() => upd(tab, { ownAngle: true, angle: { title: '', audience: '', insight: '', stage: stage === 'auto' ? 'problem' : stage } })}>Write my own</button></div>
-          {tabs('angle', 'angles')}
-          {count > 1 && <p className="small muted wz-tip">Choosing for <strong>Creative {LETTERS[tab]}</strong>. Pick a different angle on each tab; the letters on a card show which creative uses it.</p>}
-          {v.ownAngle && v.angle && (
-            <div className="wz-own">
-              <input placeholder="Angle in a few words" value={v.angle.title} onChange={(e) => upd(tab, (y) => ({ angle: { ...y.angle, title: e.target.value } }))} />
-              <input placeholder="Who it speaks to" value={v.angle.audience} onChange={(e) => upd(tab, (y) => ({ angle: { ...y.angle, audience: e.target.value } }))} />
-              <input placeholder="The insight, in their words" value={v.angle.insight} onChange={(e) => upd(tab, (y) => ({ angle: { ...y.angle, insight: e.target.value } }))} />
+        <div className="wz-scroll">
+          {step === 'setup' && (
+            <div className="wz-body wz-narrow">
+              <label className="field"><span>Brand</span>
+                <select value={brandId} onChange={(e) => setBrandId(e.target.value)}>{brands.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>
+              </label>
+              <div className="field"><span>Who is the ad for?</span>
+                <div className="wz-choice" role="radiogroup" aria-label="Who is the ad for">
+                  <button role="radio" aria-checked={source === 'owner'} className={source === 'owner' ? 'on' : ''} onClick={() => setSource('owner')}>Business owners</button>
+                  <button role="radio" aria-checked={source === 'agency'} className={source === 'agency' ? 'on' : ''} onClick={() => setSource('agency')}>Agency owners</button>
+                </div>
+              </div>
+              <div className="grid-2">
+                <div className="field"><span>How many creatives?</span>
+                  <div className="wz-stepper">
+                    <button onClick={() => setCount((n) => Math.max(1, n - 1))} disabled={count <= 1} aria-label="Fewer">−</button>
+                    <output aria-live="polite">{count}</output>
+                    <button onClick={() => setCount((n) => Math.min(10, n + 1))} disabled={count >= 10} aria-label="More">+</button>
+                  </div>
+                </div>
+                <div className="field"><span>Start from</span>
+                  <div className="wz-seg" role="radiogroup" aria-label="Start from">
+                    <button role="radio" aria-checked={mode === 'random'} className={mode === 'random' ? 'on' : ''} onClick={() => setMode('random')}>Claude's ideas</button>
+                    <button role="radio" aria-checked={mode === 'prompt'} className={mode === 'prompt' ? 'on' : ''} onClick={() => setMode('prompt')}>My own idea</button>
+                  </div>
+                </div>
+              </div>
+              <details className="wz-more">
+                <summary><strong>More options</strong> <span>{METHOD_SHORT[method]} · {FORMAT_LABEL[format]} · {{ device: 'Clean card', free: 'Free design', classic: 'Classic card' }[design]} · {STAGE_SHORT[stage]} stage</span></summary>
+                <div className="grid-2">
+                  <label className="field"><span>Method</span>
+                    <select value={method} onChange={(e) => setMethod(e.target.value)}>
+                      <option value="presold">Pre-Sold (Jeff Miller)</option>
+                      <option value="100m">$100M Offers (Hormozi)</option>
+                      <option value="both">Both methods together</option>
+                    </select>
+                  </label>
+                  <label className="field"><span>Format</span>
+                    <select value={format} onChange={(e) => setFormat(e.target.value)}>
+                      <option value="4:5">4:5 (Feed)</option><option value="9:16">9:16 (Stories, Reels)</option><option value="both">4:5 + 9:16 (one of each)</option>
+                    </select>
+                  </label>
+                  <label className="field"><span>Design</span>
+                    <select value={design} onChange={(e) => setDesign(e.target.value)}>
+                      <option value="device">Clean card with one visual</option><option value="free">Free design</option><option value="classic">Classic card</option>
+                    </select>
+                  </label>
+                  <label className="field"><span>Awareness stage</span>
+                    <select value={stage} onChange={(e) => setStage(e.target.value)}>{STAGES.map(([val, l]) => <option key={val} value={val}>{l}</option>)}</select>
+                  </label>
+                </div>
+              </details>
             </div>
           )}
-          {isBusy('all:angles') && angles.length === 0 && <Loading text="Claude is writing angles…" />}
-          <div className="wz-cards">
-            {angles.map((a, i) => (
-              <button key={i} className={`wz-card ${!v.ownAngle && v.angle === a ? 'on' : ''}`} onClick={() => upd(tab, { ownAngle: false, angle: a })}>
-                <span className="wz-card-top"><strong>{a.title}</strong><span className="chip">{STAGE_SHORT[a.stage] || a.stage}</span></span>
-                <small>{a.audience}</small>
-                <span className="wz-card-insight">{a.insight}</span>
-                {count > 1 && usedBy(a).length > 0 && <span className="wz-used">{usedBy(a).map((l) => <b key={l}>{l}</b>)}</span>}
-              </button>
-            ))}
-          </div>
-          <Chat messages={angleChat} busy={isBusy('all:angles')}
-            onSend={(t) => { setAngleChat((c) => [...c, { role: 'user', text: t }]); loadAngles(t); }}
-            placeholder="e.g. angles for agency owners who just lost their biggest client" />
-        </div>
-      )}
 
-      {step === 'hook' && (
-        <div className="wz-body">
-          <div className="wz-head"><h3>Pick a hook</h3>
-            {count > 1 && v.hook && <button className="link-btn" onClick={() => copyToAll(['hook'])}>Use this hook for all</button>}</div>
-          {tabs('hook', 'hooks')}
-          {isBusy(`${tab}:hooks`) && v.hooks.length === 0 && <Loading text="Claude is writing hooks…" />}
-          <div className="wz-hooks">
-            {v.hooks.map((h, i) => (
-              <button key={i} className={`wz-hook ${v.hook === h.text ? 'on' : ''}`} onClick={() => upd(tab, { hook: h.text })}>
-                <span className="wz-hook-text">{h.text}</span><span className="wz-hook-style">{h.style}</span>
-              </button>
-            ))}
-          </div>
-          <label className="field wz-edit"><span>Your hook (edit it, or write your own)</span>
-            <input value={v.hook} onChange={(e) => upd(tab, { hook: e.target.value })} placeholder="Pick one above or type a hook" />
-          </label>
-          <Chat messages={v.chats.hooks} onSend={chatSend('hooks', loadHooks)} busy={isBusy(`${tab}:hooks`)}
-            placeholder="e.g. 10 short questions about missed calls at night" />
-        </div>
-      )}
+          {step === 'angle' && (
+            <div className="wz-body">
+              {isBusy(`${tab}:angles`) && v.angles.length === 0 && <Loading text="Claude is writing angles…" />}
+              <div className="wz-options" role="radiogroup" aria-label="Angles">
+                {v.angles.map((a, i) => {
+                  const on = !v.ownAngle && v.angle === a;
+                  return (
+                    <button key={i} role="radio" aria-checked={on} className={`wz-option ${on ? 'on' : ''}`} onClick={() => upd(tab, { ownAngle: false, angle: a })}>
+                      <span className="wz-radio" aria-hidden="true" />
+                      <span className="wz-option-text"><strong>{a.title}</strong><small>{a.insight}</small></span>
+                    </button>
+                  );
+                })}
+                {(v.angles.length > 0 || v.ownAngle) && (
+                  <button role="radio" aria-checked={v.ownAngle} className={`wz-option own ${v.ownAngle ? 'on' : ''}`}
+                    onClick={() => !v.ownAngle && upd(tab, { ownAngle: true, angle: { title: '', audience: '', insight: '', stage: stage === 'auto' ? 'problem' : stage } })}>
+                    <span className="wz-radio" aria-hidden="true" />
+                    <span className="wz-option-text"><strong>Write my own angle</strong></span>
+                  </button>
+                )}
+              </div>
+              {v.ownAngle && v.angle && (
+                <div className="wz-own">
+                  <label className="field"><span>Angle in a few words</span><input value={v.angle.title} onChange={(e) => upd(tab, (y) => ({ angle: { ...y.angle, title: e.target.value } }))} autoFocus /></label>
+                  <label className="field"><span>The insight, in their words (optional)</span><input value={v.angle.insight} onChange={(e) => upd(tab, (y) => ({ angle: { ...y.angle, insight: e.target.value } }))} /></label>
+                </div>
+              )}
+            </div>
+          )}
 
-      {step === 'content' && (
-        <div className="wz-body">
-          <div className="wz-head"><h3>What goes on the creative</h3></div>
-          {tabs('content', 'content')}
-          {isBusy(`${tab}:content`) && !v.content && <Loading text="Claude is writing the copy…" />}
-          {v.content && (
-            <>
-              {isDevice && <p className="small muted wz-tip">The card stays short: headline, visual, proof line, button and note, offer pill and footer. Benefits and offer details go in the caption below.</p>}
-              <label className="field"><span>{isDevice ? 'Headline (2 or 3 short lines, about 9 words at most)' : 'Headline (your hook)'}</span><input value={v.content.headline} onChange={(e) => setC('headline', e.target.value)} /></label>
-              {isDevice ? (
-                <label className="field"><span>Button text (the brand's CTA)</span><input value={v.content.cta} onChange={(e) => setC('cta', e.target.value)} /></label>
-              ) : (
+          {step === 'hook' && (
+            <div className="wz-body">
+              {isBusy(`${tab}:hooks`) && v.hooks.length === 0 && <Loading text="Claude is writing hooks…" />}
+              <div className="wz-options" role="radiogroup" aria-label="Hooks">
+                {v.hooks.map((h, i) => (
+                  <button key={i} role="radio" aria-checked={v.hook === h.text} className={`wz-option ${v.hook === h.text ? 'on' : ''}`} onClick={() => upd(tab, { hook: h.text })}>
+                    <span className="wz-radio" aria-hidden="true" /><span className="wz-option-text"><strong>{h.text}</strong></span>
+                  </button>
+                ))}
+              </div>
+              {(v.hooks.length > 0 || v.hook) && (
+                <label className="field wz-edit"><span>Edit the hook, or write your own</span>
+                  <input value={v.hook} onChange={(e) => upd(tab, { hook: e.target.value })} placeholder="Type a hook" />
+                </label>
+              )}
+              {count > 1 && v.hook && <button className="link-btn" onClick={() => copyToAll(['hook'])}>Use this hook for every creative</button>}
+            </div>
+          )}
+
+          {step === 'content' && (
+            <div className="wz-body wz-narrow">
+              {isBusy(`${tab}:content`) && !v.content && <Loading text="Claude is writing the words…" />}
+              {v.content && (
                 <>
-                  <label className="field"><span>Support line</span><textarea rows={2} value={v.content.support} onChange={(e) => setC('support', e.target.value)} /></label>
-                  <div className="grid-2">
-                    <label className="field"><span>Bullets (one per line, optional)</span><textarea rows={4} value={v.content.bulletsText} onChange={(e) => setC('bulletsText', e.target.value)} /></label>
-                    <div>
-                      <label className="field"><span>Extra line (offer, stat or guarantee, optional)</span><input value={v.content.extra} onChange={(e) => setC('extra', e.target.value)} /></label>
-                      <label className="field"><span>Button text</span><input value={v.content.cta} onChange={(e) => setC('cta', e.target.value)} /></label>
+                  <label className="field"><span>Headline</span><input value={v.content.headline} onChange={(e) => setC('headline', e.target.value)} /></label>
+                  <label className="field"><span>Body text <small>(one or two short sentences under the headline)</small></span><textarea rows={2} value={v.content.support || ''} onChange={(e) => setC('support', e.target.value)} /></label>
+                  <label className="field"><span>Button</span><input value={v.content.cta} onChange={(e) => setC('cta', e.target.value)} /></label>
+                  <details className="wz-fold">
+                    <summary>More text on the creative</summary>
+                    <div className="grid-2">
+                      <label className="field"><span>Accent words (comma separated)</span><input value={v.content.accentText || ''} onChange={(e) => setC('accentText', e.target.value)} placeholder="e.g. every call" /></label>
+                      <label className="field"><span>Offer pill</span><input value={v.content.bonus_pill || ''} onChange={(e) => setC('bonus_pill', e.target.value)} /></label>
+                      <label className="field"><span>Proof line</span><input value={v.content.proof_line || ''} onChange={(e) => setC('proof_line', e.target.value)} /></label>
+                      <label className="field"><span>Note under the button</span><input value={v.content.cta_note || ''} onChange={(e) => setC('cta_note', e.target.value)} /></label>
                     </div>
+                    {!isDevice && (
+                      <div className="grid-2">
+                        <label className="field"><span>Bullets (one per line)</span><textarea rows={3} value={v.content.bulletsText} onChange={(e) => setC('bulletsText', e.target.value)} /></label>
+                        <label className="field"><span>Extra line (offer, stat or guarantee)</span><input value={v.content.extra} onChange={(e) => setC('extra', e.target.value)} /></label>
+                      </div>
+                    )}
+                  </details>
+                  <details className="wz-fold">
+                    <summary>Facebook ad text (caption, headline, button)</summary>
+                    <label className="field"><span>Primary text</span><textarea rows={7} value={v.content.ad_copy?.primary_text || ''} onChange={(e) => setAd('primary_text', e.target.value)} /></label>
+                    <div className="grid-2">
+                      <label className="field"><span>Headline ({(v.content.ad_copy?.headline || '').length}/27)</span><input value={v.content.ad_copy?.headline || ''} onChange={(e) => setAd('headline', e.target.value)} /></label>
+                      <label className="field"><span>Description ({(v.content.ad_copy?.description || '').length}/30)</span><input value={v.content.ad_copy?.description || ''} onChange={(e) => setAd('description', e.target.value)} /></label>
+                    </div>
+                    <label className="field"><span>Button</span>
+                      <select value={v.content.ad_copy?.cta_button || 'LEARN_MORE'} onChange={(e) => setAd('cta_button', e.target.value)}>{CTA_BUTTONS.map((c) => <option key={c} value={c}>{c.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (m) => m.toUpperCase())}</option>)}</select>
+                    </label>
+                  </details>
+                  {[...(v.content.flags || []), ...(v.content.compliance_notes || [])].length > 0 && (
+                    <details className="wz-check">
+                      <summary>{(() => { const n = new Set([...(v.content.flags || []), ...(v.content.compliance_notes || [])]).size; return n === 1 ? '1 thing to check before running' : `${n} things to check before running`; })()}</summary>
+                      <ul>{[...new Set([...(v.content.flags || []), ...(v.content.compliance_notes || [])])].map((n, i) => <li key={i}>{n}</li>)}</ul>
+                    </details>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {step === 'assets' && isDevice && (
+            <div className="wz-body wz-visual">
+              <div className="wz-visual-list">
+                {isBusy(`${tab}:screens`) && v.screens.length === 0 && <Loading text="Claude is picking visuals for this hook…" />}
+                <div className="wz-vgrid" role="radiogroup" aria-label="Visuals">
+                  {v.screens.map((x, i) => (
+                    <button key={i} role="radio" aria-checked={v.screenAt === i} className={`wz-vcard ${v.screenAt === i ? 'on' : ''}`} onClick={() => upd(tab, { screenAt: i })}>
+                      <span className="wz-vthumb" style={{ background: isHex(x.background_hex) ? x.background_hex : (brand?.colors?.deep || '#15201D') }}><VisualIcon screen={x} accent={accent} /></span>
+                      <span className="wz-vlabel"><small>{x.kind === 'object' ? 'Object' : `${DEVICE_LABEL[x.device] || 'Phone'} screen`}</small><strong>{x.idea}</strong></span>
+                    </button>
+                  ))}
+                  {v.screens.length > 0 && (
+                    <button className="wz-vcard own" onClick={() => { upd(tab, (y) => ({ screens: [...y.screens, { idea: 'My own visual', kind: 'object', object: '', image_prompt: '', device: 'phone', device_side: 'right', background_hex: '', app_title: '', elementsText: '' }], screenAt: y.screens.length })); setEditVisual(true); }}>
+                      <span className="wz-vthumb plus" aria-hidden="true">+</span>
+                      <span className="wz-vlabel"><strong>My own visual</strong></span>
+                    </button>
+                  )}
+                </div>
+              </div>
+              <aside className="wz-preview-col" aria-label="Preview">
+                <span className="wz-mini-label">Preview</span>
+                <CardPreview brand={brand} content={v.content} screen={sc} />
+                {sc && <button className="link-btn" onClick={() => setEditVisual((e) => !e)}>{editVisual ? 'Done editing' : 'Edit this visual'}</button>}
+                {sc && editVisual && (
+                  <div className="wz-screen-edit">
+                    <label className="field"><span>Visual</span>
+                      <select value={sc.kind === 'object' ? 'object' : sc.device} onChange={(e) => setScreen(v.screenAt, e.target.value === 'object' ? { kind: 'object' } : { kind: 'device', device: e.target.value, device_side: e.target.value === 'laptop' ? 'below' : sc.device_side === 'below' ? 'right' : sc.device_side })}>
+                        <option value="object">An object</option>
+                        {Object.entries(DEVICE_LABEL).map(([val, l]) => <option key={val} value={val}>{l} screen</option>)}
+                      </select>
+                    </label>
+                    <div className="grid-2">
+                      <label className="field"><span>Position</span>
+                        <select value={sc.device_side} onChange={(e) => setScreen(v.screenAt, { device_side: e.target.value })}>{Object.entries(SIDE_LABEL).map(([val, l]) => <option key={val} value={val}>{l}</option>)}</select>
+                      </label>
+                      <label className="field"><span>Background</span>
+                        <span className="wz-color">
+                          <input type="color" value={isHex(sc.background_hex) ? sc.background_hex : '#111111'} onChange={(e) => setScreen(v.screenAt, { background_hex: e.target.value })} aria-label="Background colour" />
+                          <input value={sc.background_hex || ''} onChange={(e) => setScreen(v.screenAt, { background_hex: e.target.value })} placeholder="Auto" aria-label="Background hex" />
+                        </span>
+                      </label>
+                    </div>
+                    {sc.kind === 'object' ? (
+                      <>
+                        <label className="field"><span>The object</span><input value={sc.object || ''} onChange={(e) => setScreen(v.screenAt, { object: e.target.value, idea: e.target.value || sc.idea })} placeholder="e.g. fridge with a sticky note" /></label>
+                        <label className="field"><span>How it should look</span><textarea rows={3} value={sc.image_prompt || ''} onChange={(e) => setScreen(v.screenAt, { image_prompt: e.target.value })} placeholder="e.g. glossy 3D fridge, a yellow note on the door, soft light" /></label>
+                      </>
+                    ) : (
+                      <>
+                        <label className="field"><span>App title</span><input value={sc.app_title || ''} onChange={(e) => setScreen(v.screenAt, { app_title: e.target.value })} placeholder="e.g. Inbox" /></label>
+                        <label className="field"><span>On the screen (one line each)</span><textarea rows={4} value={sc.elementsText || ''} onChange={(e) => setScreen(v.screenAt, { elementsText: e.target.value })} /></label>
+                      </>
+                    )}
+                  </div>
+                )}
+              </aside>
+            </div>
+          )}
+
+          {step === 'assets' && !isDevice && (
+            <div className="wz-body">
+              <div className="wz-seg wide" role="radiogroup" aria-label="Visual">
+                <button role="radio" aria-checked={v.visual === 'both'} className={v.visual === 'both' ? 'on' : ''} onClick={() => chooseVisual('both')} disabled={!aiImages}>Photo + AI image</button>
+                <button role="radio" aria-checked={v.visual === 'ai'} className={v.visual === 'ai' ? 'on' : ''} onClick={() => chooseVisual('ai')} disabled={!aiImages}>AI image</button>
+                <button role="radio" aria-checked={v.visual === 'photo'} className={v.visual === 'photo' ? 'on' : ''} onClick={() => chooseVisual('photo')}>Photo</button>
+              </div>
+              {!aiImages && <p className="small muted">AI images need an OpenAI key in the server settings.</p>}
+              {usesAiOf(v) && (
+                <>
+                  <h3 className="wz-sub">AI image</h3>
+                  {isBusy(`${tab}:assets`) && v.ideas.length === 0 && <Loading text="Claude is suggesting images…" />}
+                  <div className="wz-options" role="radiogroup" aria-label="Image ideas">
+                    {v.ideas.map((x, i) => (
+                      <button key={i} role="radio" aria-checked={v.ideaAt === i} className={`wz-option ${v.ideaAt === i ? 'on' : ''}`} onClick={() => upd(tab, { ideaAt: i })}>
+                        <span className="wz-radio" aria-hidden="true" /><span className="wz-option-text"><strong>{x.idea}</strong><small>{x.prompt}</small></span>
+                      </button>
+                    ))}
+                  </div>
+                  {v.ideas[v.ideaAt] && (
+                    <label className="field wz-edit"><span>Image description</span><textarea rows={3} value={v.ideas[v.ideaAt].prompt} onChange={(e) => setIdea(v.ideaAt, { prompt: e.target.value })} /></label>
+                  )}
+                </>
+              )}
+              {usesPhotoOf(v) && (
+                <>
+                  <h3 className="wz-sub">{v.visual === 'both' ? 'Background photo' : 'Photo'}</h3>
+                  <div className="thumbs wz-photos">
+                    {brandImages.map((im) => (
+                      <button key={im.url} className={`thumb ${v.photoUrl === im.url ? 'on' : ''}`} onClick={() => upd(tab, { photoUrl: im.url })}><img src={im.url} alt={im.label || 'Brand photo'} /></button>
+                    ))}
+                    {v.photoUrl && !brandImages.some((im) => im.url === v.photoUrl) && <button className="thumb on"><img src={v.photoUrl} alt="Uploaded" /></button>}
+                    <label className="thumb add"><input type="file" accept="image/*" onChange={(e) => uploadOwn(e.target.files[0])} aria-label="Upload a photo" /><span>+ Upload</span></label>
                   </div>
                 </>
               )}
-              <div className="grid-2">
-                <label className="field"><span>Accent words (comma separated)</span><input value={v.content.accentText || ''} onChange={(e) => setC('accentText', e.target.value)} placeholder="e.g. every call" /></label>
-                <label className="field"><span>Offer pill (top right, optional)</span><input value={v.content.bonus_pill || ''} onChange={(e) => setC('bonus_pill', e.target.value)} /></label>
-                <label className="field"><span>Proof line (with a shield icon, optional)</span><input value={v.content.proof_line || ''} onChange={(e) => setC('proof_line', e.target.value)} /></label>
-                <label className="field"><span>Note under the button (optional)</span><input value={v.content.cta_note || ''} onChange={(e) => setC('cta_note', e.target.value)} /></label>
-              </div>
-              <details className="wz-adcopy" open>
-                <summary>Meta ad copy (caption, headline, description, button)</summary>
-                <label className="field"><span>Primary text (caption)</span><textarea rows={8} value={v.content.ad_copy?.primary_text || ''} onChange={(e) => setAd('primary_text', e.target.value)} /></label>
-                <div className="grid-2">
-                  <label className="field"><span>Headline ({(v.content.ad_copy?.headline || '').length}/27)</span><input value={v.content.ad_copy?.headline || ''} onChange={(e) => setAd('headline', e.target.value)} /></label>
-                  <label className="field"><span>Description ({(v.content.ad_copy?.description || '').length}/30)</span><input value={v.content.ad_copy?.description || ''} onChange={(e) => setAd('description', e.target.value)} /></label>
-                </div>
-                <label className="field"><span>Meta button</span>
-                  <select value={v.content.ad_copy?.cta_button || 'LEARN_MORE'} onChange={(e) => setAd('cta_button', e.target.value)}>{CTA_BUTTONS.map((c) => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}</select>
-                </label>
-              </details>
-              {[...(v.content.flags || []), ...(v.content.compliance_notes || [])].length > 0 && (
-                <div className="notice"><strong>Check before running:</strong><ul>{[...new Set([...(v.content.flags || []), ...(v.content.compliance_notes || [])])].map((n, i) => <li key={i}>{n}</li>)}</ul></div>
-              )}
-            </>
+            </div>
           )}
-          <Chat messages={v.chats.content} onSend={chatSend('content', loadContent)} busy={isBusy(`${tab}:content`)}
-            placeholder="e.g. make the headline shorter and mention the free setup" />
-        </div>
-      )}
 
-      {step === 'assets' && isDevice && (
-        <div className="wz-body">
-          <div className="wz-head"><h3>Choose the visual</h3>
-            <button className="link-btn" onClick={() => upd(tab, (y) => ({ screens: [...y.screens, { idea: 'My own visual', kind: 'object', object: '', image_prompt: '', device: 'phone', device_side: 'right', background_hex: '', app_title: '', elementsText: '' }], screenAt: y.screens.length }))} disabled={isBusy(`${tab}:screens`)}>Write my own</button></div>
-          {tabs('assets', 'screens')}
-          <p className="small muted wz-tip">One hero visual on a flat background: a device whose screen shows the fix, or any object that fits the hook. {aiImages ? 'Objects are made as images when the creative is generated.' : 'Objects are drawn as clean illustrations (add OPENAI_API_KEY for image-quality objects).'}</p>
-          {isBusy(`${tab}:screens`) && v.screens.length === 0 && <Loading text="Claude is picking visuals for this hook…" />}
-          <div className="wz-ideas text">
-            {v.screens.map((x, i) => {
-              const on = v.screenAt === i;
-              const obj = x.kind === 'object';
-              return (
-                <div key={i} className={`wz-idea ${on ? 'on wide' : ''}`} onClick={() => upd(tab, { screenAt: i })} role="radio" aria-checked={on} tabIndex={0}
-                  onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) upd(tab, { screenAt: i }); }}>
-                  <span className="wz-card-top">
-                    <span className="chip">{obj ? 'Object' : `${DEVICE_LABEL[x.device] || x.device} screen`} · {SIDE_SHORT[x.device_side] || x.device_side}</span>
-                    {isHex(x.background_hex) && <span className="wz-swatch" style={{ background: x.background_hex }} title={x.background_hex} />}
-                  </span>
-                  <strong>{x.idea}</strong>
-                  {on ? (
-                    <div className="wz-screen-edit" onClick={(e) => e.stopPropagation()}>
-                      <div className="wz-screen-grid">
-                        <label className="field"><span>Visual</span>
-                          <select value={obj ? 'object' : x.device} onChange={(e) => setScreen(i, e.target.value === 'object' ? { kind: 'object' } : { kind: 'device', device: e.target.value, device_side: e.target.value === 'laptop' ? 'below' : x.device_side === 'below' ? 'right' : x.device_side })}>
-                            <option value="object">An object</option>
-                            {Object.entries(DEVICE_LABEL).map(([val, l]) => <option key={val} value={val}>{l} screen</option>)}
-                          </select>
-                        </label>
-                        <label className="field"><span>Position</span>
-                          <select value={x.device_side} onChange={(e) => setScreen(i, { device_side: e.target.value })}>
-                            {Object.entries(SIDE_LABEL).map(([val, l]) => <option key={val} value={val}>{l}</option>)}
-                          </select>
-                        </label>
-                        <label className="field"><span>Background</span>
-                          <span className="wz-color">
-                            <input type="color" value={isHex(x.background_hex) ? x.background_hex : '#111111'} onChange={(e) => setScreen(i, { background_hex: e.target.value })} aria-label="Background colour" />
-                            <input value={x.background_hex || ''} onChange={(e) => setScreen(i, { background_hex: e.target.value })} placeholder="Claude picks" />
-                          </span>
-                        </label>
-                      </div>
-                      {obj ? (
-                        <>
-                          <label className="field"><span>The object</span><input value={x.object || ''} onChange={(e) => setScreen(i, { object: e.target.value })} placeholder="e.g. stainless steel fridge with one sticky note" /></label>
-                          <label className="field"><span>How it should look</span>
-                            <textarea rows={3} value={x.image_prompt || ''} onChange={(e) => setScreen(i, { image_prompt: e.target.value })} placeholder="e.g. glossy 3D fridge, door slightly open, a yellow note on the door, soft light" />
-                          </label>
-                        </>
-                      ) : (
-                        <>
-                          <label className="field"><span>App title on the screen</span><input value={x.app_title || ''} onChange={(e) => setScreen(i, { app_title: e.target.value })} placeholder="e.g. Inbox" /></label>
-                          <label className="field"><span>On the screen (one line per item, top to bottom)</span>
-                            <textarea rows={4} value={x.elementsText || ''} onChange={(e) => setScreen(i, { elementsText: e.target.value })} placeholder={'Missed call: Sam (555) 014-2290, 7:40pm\nTexted back: Sorry we missed you, want to book?'} />
-                          </label>
-                        </>
-                      )}
-                    </div>
-                  ) : (
-                    <small>{obj ? (x.object || x.image_prompt) : `${x.app_title ? `${x.app_title}: ` : ''}${lines(x.elementsText).join(' · ')}`}</small>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          <Chat messages={v.chats.screens} onSend={chatSend('screens', loadScreens)} busy={isBusy(`${tab}:screens`)}
-            placeholder="e.g. show a fridge with a sticky note instead, light background" />
-        </div>
-      )}
-
-      {step === 'assets' && !isDevice && (
-        <div className="wz-body">
-          <div className="wz-head"><h3>Choose the visual</h3>
-            {brand?.logo_url
-              ? <span className="wz-logo">Logo added automatically <img src={brand.logo_url} alt="" style={{ background: brand.colors?.deep || '#111' }} /></span>
-              : <span className="muted small">No logo in the brand kit, so the brand name is used as a wordmark</span>}
-          </div>
-          {tabs('assets', 'assets')}
-          <div className="segmented three" role="radiogroup" aria-label="Visual">
-            <button role="radio" aria-checked={v.visual === 'both'} className={v.visual === 'both' ? 'on' : ''} onClick={() => chooseVisual('both')} disabled={!aiImages}>
-              <strong>Photo + AI image</strong><small>{aiImages ? 'Brand photo in the background, AI image on top' : 'Needs OPENAI_API_KEY'}</small>
-            </button>
-            <button role="radio" aria-checked={v.visual === 'ai'} className={v.visual === 'ai' ? 'on' : ''} onClick={() => chooseVisual('ai')} disabled={!aiImages}>
-              <strong>AI image only</strong><small>{aiImages ? 'No photo' : 'Needs OPENAI_API_KEY'}</small>
-            </button>
-            <button role="radio" aria-checked={v.visual === 'photo'} className={v.visual === 'photo' ? 'on' : ''} onClick={() => chooseVisual('photo')}>
-              <strong>Photo only</strong><small>No AI image</small>
-            </button>
-          </div>
-          {usesAiOf(v) && (
-            <>
-              <div className="wz-head"><h4>{v.visual === 'both' ? 'AI image on top' : 'AI image'} <small className="muted">made when the creative is generated</small></h4>
-                <button className="link-btn" onClick={() => upd(tab, (y) => ({ ideas: [...y.ideas, { idea: 'My own idea', visual_type: 'object', shape: 'square', prompt: '' }], ideaAt: y.ideas.length }))}>Write my own</button></div>
-              {isBusy(`${tab}:assets`) && v.ideas.length === 0 && <Loading text="Claude is suggesting images…" />}
-              <div className="wz-ideas text">
-                {v.ideas.map((x, i) => (
-                  <div key={i} className={`wz-idea ${v.ideaAt === i ? 'on' : ''}`} onClick={() => upd(tab, { ideaAt: i })} role="radio" aria-checked={v.ideaAt === i} tabIndex={0}
-                    onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) upd(tab, { ideaAt: i }); }}>
-                    <span className="chip">{VISUAL_LABEL[x.visual_type] || x.visual_type} · {x.shape}</span>
-                    <strong>{x.idea}</strong>
-                    {v.ideaAt === i
-                      ? <textarea rows={4} value={x.prompt} onClick={(e) => e.stopPropagation()} onChange={(e) => setIdea(i, { prompt: e.target.value })} aria-label="Image description" placeholder="Describe the image" />
-                      : <small>{x.prompt}</small>}
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-          {usesPhotoOf(v) && (
-            <>
-              <div className="wz-head"><h4>{v.visual === 'both' ? 'Background photo' : 'Photo'}</h4></div>
-              <div className="thumbs wz-photos">
-                {brandImages.map((im) => (
-                  <button key={im.url} className={`thumb ${v.photoUrl === im.url ? 'on' : ''}`} onClick={() => upd(tab, { photoUrl: im.url })}>
-                    <img src={im.url} alt={im.label || 'Brand photo'} />
-                  </button>
-                ))}
-                {v.photoUrl && !brandImages.some((im) => im.url === v.photoUrl) && <button className="thumb on"><img src={v.photoUrl} alt="Uploaded" /></button>}
-                <label className="thumb add">
-                  <input type="file" accept="image/*" onChange={(e) => uploadOwn(e.target.files[0])} aria-label="Upload a photo" />
-                  <span>+ Upload</span>
-                </label>
-              </div>
-            </>
-          )}
-          {usesAiOf(v) && (
-            <Chat messages={v.chats.assets} onSend={chatSend('assets', loadIdeas)} busy={isBusy(`${tab}:assets`)}
-              placeholder="e.g. a 3D phone with three missed calls in brand purple" />
-          )}
-        </div>
-      )}
-
-      {step === 'generate' && (
-        <div className="wz-body">
-          {tabs('generate', 'none')}
-          {v.content && (
-            <div className="wz-review">
-              <div className="wz-review-img">
-                {usesPhotoOf(v) && v.photoUrl ? <img src={v.photoUrl} alt="Chosen photo" /> : null}
-                {usesAiOf(v) && v.ideas[v.ideaAt] && <div className={`wz-review-idea ${usesPhotoOf(v) ? 'over' : ''}`}><span className="chip">AI {VISUAL_LABEL[v.ideas[v.ideaAt].visual_type] || 'image'}</span><strong>{v.ideas[v.ideaAt].idea}</strong></div>}
-                {isDevice && v.screens[v.screenAt] && (() => {
-                  const sc = v.screens[v.screenAt];
-                  return (
-                    <div className="wz-review-device" style={isHex(sc.background_hex) ? { background: sc.background_hex, color: lightHex(sc.background_hex) ? '#111' : '#fff' } : undefined}>
-                      <span className="chip">{sc.kind === 'object' ? 'Object' : `${DEVICE_LABEL[sc.device]} screen`} · {SIDE_SHORT[sc.device_side]}</span>
-                      <strong>{sc.kind === 'object' ? (sc.object || sc.idea) : (sc.app_title || sc.idea)}</strong>
-                      {sc.kind !== 'object' && <ul>{lines(sc.elementsText).map((t, i) => <li key={i}>{t}</li>)}</ul>}
-                      {sc.kind === 'object' && sc.image_prompt && <small>{sc.image_prompt}</small>}
-                    </div>
-                  );
-                })()}
-                {!isDevice && !usesPhotoOf(v) && !usesAiOf(v) && <span className="muted small">No image</span>}
-              </div>
-              <div>
-                <h3>{v.content.headline}</h3>
-                {!isDevice && v.content.support && <p>{v.content.support}</p>}
-                {!isDevice && v.content.bulletsText && <ul>{lines(v.content.bulletsText).map((t, i) => <li key={i}>{t}</li>)}</ul>}
-                {isDevice && v.content.proof_line && <p className="small">🛡 {v.content.proof_line}</p>}
-                {isDevice && v.content.bonus_pill && <p className="small"><span className="chip">{v.content.bonus_pill}</span></p>}
-                {v.content.cta && <span className="wz-cta">{v.content.cta}</span>}
-                <label className="field wz-design-prompt"><span>Prompt for the design (optional)</span>
+          {step === 'generate' && v.content && (
+            <div className="wz-body wz-visual">
+              <div className="wz-review-text">
+                <dl className="wz-facts">
+                  <div><dt>Headline</dt><dd>{v.content.headline}</dd></div>
+                  {v.content.support && <div><dt>Body text</dt><dd>{v.content.support}</dd></div>}
+                  <div><dt>Button</dt><dd>{v.content.cta}</dd></div>
+                  {isDevice && sc && <div><dt>Visual</dt><dd>{sc.kind === 'object' ? (sc.object || sc.idea) : `${DEVICE_LABEL[sc.device]} screen: ${sc.idea}`}</dd></div>}
+                  {!isDevice && <div><dt>Visual</dt><dd>{usesAiOf(v) ? v.ideas[v.ideaAt]?.idea : usesPhotoOf(v) ? 'Brand photo' : 'No image'}</dd></div>}
+                </dl>
+                <label className="field"><span>Notes for the design (optional)</span>
                   <textarea rows={2} value={v.designNotes} onChange={(e) => upd(tab, { designNotes: e.target.value })}
-                    placeholder={isDevice ? 'e.g. light cream background, visual on the left, accent words underlined' : 'e.g. dark background, the hook huge at the top'} />
+                    placeholder={isDevice ? 'e.g. light background, visual on the left' : 'e.g. dark background, hook huge at the top'} />
                 </label>
-                <p className="small muted" style={{ marginTop: 8 }}>
-                  {FORMAT_LABEL[format]} · {METHOD_SHORT[method]} · {brand?.name} · For {source === 'agency' ? 'agency owners' : 'business owners'}
-                  {count > 1 ? ` · Generating all ${count} creatives (${total} images)` : ''}
-                </p>
+                <p className="small muted">{brand?.name} · {FORMAT_LABEL[format]} · {METHOD_SHORT[method]}{count > 1 ? ` · ${total} images in all` : ''}</p>
               </div>
+              <aside className="wz-preview-col" aria-label="Preview">
+                <span className="wz-mini-label">Rough preview (Claude designs the final one)</span>
+                <CardPreview brand={brand} content={v.content} screen={isDevice ? sc : null} photo={usesPhotoOf(v) ? v.photoUrl : ''} />
+              </aside>
             </div>
           )}
         </div>
-      )}
-    </Modal>
+
+        <footer className="wz-bottom">
+          {step === 'setup' ? (
+            <div className="wz-chat-input single">
+              <input value={prompt} onChange={(e) => setPrompt(e.target.value)} aria-label={mode === 'prompt' ? 'Your idea' : 'Anything Claude should know'}
+                placeholder={mode === 'prompt' ? 'Your idea, e.g. Fall promo: first month half price for new agencies' : 'Anything Claude should know? (optional)'} />
+            </div>
+          ) : chatFor[step] || null}
+          <div className="wz-nav">
+            {at > 0 ? <button className="btn" onClick={back} disabled={!!starting}>Back</button> : <span />}
+            <div className="row-gap center">
+              {starting && <Loading text={starting} />}
+              {step === 'generate'
+                ? <button className="btn primary lg" onClick={generate} disabled={!!starting}><IconSpark /> Generate {total > 1 ? `${total} creatives` : 'creative'}</button>
+                : <button className="btn primary lg" onClick={next} disabled={!!starting}>Next: {LABEL[steps[at + 1]]}</button>}
+            </div>
+          </div>
+        </footer>
+      </main>
+    </div>
+  );
+}
+
+function IconCheck() {
+  return <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6.2l2.3 2.3 4.7-5" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
+/** A small drawing of the chosen visual: a phone, tablet, laptop or a generic object. */
+function VisualIcon({ screen, accent }) {
+  const kind = screen?.kind === 'object' ? 'object' : screen?.device || 'phone';
+  if (kind === 'laptop') return <svg viewBox="0 0 120 80" aria-hidden="true"><rect x="16" y="8" width="88" height="56" rx="5" fill="#1C1C1F" /><rect x="20" y="12" width="80" height="48" rx="2" fill="#F7F7F2" /><rect x="26" y="20" width="22" height="7" rx="2" fill={accent} /><rect x="52" y="20" width="22" height="7" rx="2" fill="#DADDE0" /><rect x="26" y="33" width="68" height="7" rx="2" fill="#DADDE0" /><rect x="6" y="66" width="108" height="6" rx="3" fill="#2A2A2E" /></svg>;
+  if (kind === 'tablet') return <svg viewBox="0 0 90 110" aria-hidden="true"><rect x="8" y="4" width="74" height="102" rx="9" fill="#1C1C1F" /><rect x="13" y="10" width="64" height="90" rx="5" fill="#F7F7F2" /><rect x="19" y="20" width="52" height="9" rx="3" fill="#DADDE0" /><rect x="19" y="34" width="44" height="9" rx="3" fill={accent} /><rect x="19" y="48" width="52" height="9" rx="3" fill="#DADDE0" /></svg>;
+  if (kind === 'object') return <svg viewBox="0 0 100 100" aria-hidden="true"><rect x="22" y="24" width="56" height="56" rx="12" fill="#F7F7F2" /><rect x="22" y="24" width="56" height="56" rx="12" fill="none" stroke={accent} strokeWidth="3" /><circle cx="50" cy="52" r="12" fill={accent} opacity=".85" /><ellipse cx="50" cy="88" rx="28" ry="4" fill="#000" opacity=".18" /></svg>;
+  return <svg viewBox="0 0 70 110" aria-hidden="true"><rect x="10" y="3" width="50" height="104" rx="11" fill="#1C1C1F" /><rect x="14" y="9" width="42" height="92" rx="7" fill="#F7F7F2" /><rect x="19" y="22" width="32" height="9" rx="3" fill="#DADDE0" /><rect x="19" y="36" width="28" height="9" rx="3" fill={accent} /><rect x="19" y="50" width="32" height="9" rx="3" fill="#DADDE0" /></svg>;
+}
+
+/** A rough live preview of the creative from the current choices (the real one is designed by Claude). */
+function CardPreview({ brand, content, screen, photo }) {
+  const c = brand?.colors || {};
+  const accent = isHex(c.accent) ? c.accent : '#0F766E';
+  const bg = isHex(screen?.background_hex) ? screen.background_hex : isHex(c.deep) ? c.deep : '#15201D';
+  const light = lightHex(bg);
+  const ink = light ? '#14110F' : '#FFFFFF';
+  const soft = light ? 'rgba(20,17,15,.72)' : 'rgba(255,255,255,.78)';
+  const label = lightHex(accent) ? '#111111' : '#FFFFFF';
+  const headline = content?.headline || 'Your headline';
+  const accents = (content?.accentText || '').split(',').map((t) => t.trim()).filter(Boolean);
+  const parts = [];
+  if (accents.length) {
+    const re = new RegExp(`(${accents.map((a) => a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'i');
+    headline.split(re).forEach((p, i) => parts.push(re.test(p) && accents.some((a) => a.toLowerCase() === p.toLowerCase()) ? <span key={i} style={{ color: accent }}>{p}</span> : p));
+  } else parts.push(headline);
+  const below = screen?.device_side === 'below';
+  return (
+    <div className="wz-card-preview" style={{ background: photo ? `center / cover url(${photo})` : bg, color: ink }}>
+      <div className="wz-cp-top">
+        {brand?.logo_url ? <img src={brand.logo_url} alt="" /> : <strong>{brand?.name}</strong>}
+        {content?.bonus_pill && <span style={{ background: accent, color: label }}>{content.bonus_pill}</span>}
+      </div>
+      <div className={`wz-cp-mid ${below ? 'below' : ''} ${screen?.device_side === 'left' ? 'left' : ''}`}>
+        <div className="wz-cp-text">
+          <strong className="wz-cp-head" style={{ fontSize: headline.length > 48 ? 16 : headline.length > 30 ? 19 : 22 }}>{parts}</strong>
+          {content?.support && <span className="wz-cp-body" style={{ color: soft }}>{content.support}</span>}
+          {content?.cta && <span className="wz-cp-cta" style={{ background: accent, color: label }}>{content.cta}</span>}
+        </div>
+        {screen && <div className="wz-cp-visual"><VisualIcon screen={screen} accent={accent} /></div>}
+      </div>
+      <div className="wz-cp-foot" style={{ color: soft }}>{brand?.name}{brand?.website ? ` · ${brand.website.replace(/^https?:\/\//, '').replace(/\/$/, '')}` : ''}</div>
+    </div>
   );
 }
