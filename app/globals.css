@@ -660,6 +660,16 @@ input, textarea, select { border-color: var(--field); border-radius: 10px; }
 .layout-layer { position: absolute; inset: 0; cursor: move; touch-action: none; }
 .layout-sel { position: absolute; outline: 2px solid var(--accent); outline-offset: 1px; background: rgba(98,70,234,.06); pointer-events: none; }
 .layout-handle { position: absolute; right: -8px; bottom: -8px; width: 16px; height: 16px; border-radius: 4px; background: #fff; border: 2px solid var(--accent); cursor: nwse-resize; pointer-events: auto; touch-action: none; }
-.layout-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
-.layout-bar .btn.xs { padding: 5px 10px; font-size: 13px; }
+.layout-rot { position: absolute; left: 50%; top: -30px; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%; background: #fff; border: 2px solid var(--accent); cursor: grab; pointer-events: auto; touch-action: none; }
+.layout-rot::after { content: ""; position: absolute; left: 5px; top: 14px; width: 2px; height: 14px; background: var(--accent); }
+.layout-tools { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.layout-tools .btn.xs { padding: 5px 10px; font-size: 13px; min-width: 34px; }
+.layout-tools .seg.sm button { padding: 5px 12px; font-size: 13px; }
+.lt-grid { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 8px 12px; font-size: 13px; }
+.lt-row { display: flex; align-items: center; gap: 6px; }
+.lt-row.wrap { flex-wrap: wrap; }
+.lt-row b { min-width: 48px; text-align: center; font-size: 13px; }
+.lt-num { width: 64px; padding: 4px 6px; border: 1px solid var(--line, #d5d9d7); border-radius: 6px; font: inherit; font-size: 13px; }
+.lt-row input[type=color] { width: 44px; height: 30px; padding: 2px; border: 1px solid var(--line, #d5d9d7); border-radius: 6px; background: #fff; cursor: pointer; }
+.lt-row input[type=color]:disabled { opacity: .4; cursor: default; }
 .detail-side .seg { margin-bottom: 12px; }
