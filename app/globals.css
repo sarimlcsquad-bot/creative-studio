@@ -383,3 +383,7 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); ou
 .wz-screen-grid { display: grid; grid-template-columns: 1fr 1fr 1.2fr; gap: 8px; }
 @media (max-width: 700px) { .wz-screen-grid { grid-template-columns: 1fr 1fr; } }
 .wz-idea .chip { text-transform: none; }
+
+.wz-count { display: flex; align-items: center; gap: 8px; }
+.wz-count input { width: 72px; text-align: center; font-weight: 600; }
+.wz-count .icon-btn { width: 36px; height: 36px; font-size: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); }

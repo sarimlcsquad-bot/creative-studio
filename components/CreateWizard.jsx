@@ -64,6 +64,7 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
   const [format, setFormat] = useState('4:5');
   const [design, setDesign] = useState('device');
   const [count, setCount] = useState(1);
+  const [batch, setBatch] = useState('angles'); // angles: a different angle per creative, made at once; designs: same copy, different layouts
   const [source, setSource] = useState(''); // asked first: the ad is for business owners or agency owners
   const [aiImages, setAiImages] = useState(false);
   useEffect(() => { api.config().then((c) => setAiImages(!!c.ai_images)); }, []);
@@ -235,6 +236,22 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
     finally { setBusy(''); }
   };
 
+  // Many creatives at once, each with its own angle, hook and copy chosen by Claude (no step-by-step).
+  const quickBatch = count > 1 && batch === 'angles';
+  const generateBatch = async () => {
+    if (!canNext) return toast('Choose who the ad is for first', 'error');
+    setBusy('Starting…');
+    try {
+      await api.generate({
+        brand_id: brandId, mode, prompt: prompt.trim(), count, format, design, method, stage, source,
+        created_by: settings.userName || '', photo_source: design === 'device' ? 'none' : (aiImages ? 'ai' : 'brand'),
+      });
+      toast(`Writing ${total} creatives for ${brand.name}, each with its own angle. They appear in Creatives as they finish.`);
+      onDone();
+    } catch (e) { toast(`Couldn't start: ${e.message}`, 'error'); }
+    finally { setBusy(''); }
+  };
+
   const setC = (k, v) => setContent((c) => ({ ...c, [k]: v }));
   const setAd = (k, v) => setContent((c) => ({ ...c, ad_copy: { ...c.ad_copy, [k]: v } }));
 
@@ -245,7 +262,9 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
       <button className="btn ghost" onClick={onClose}>Cancel</button>
       {step === 'generate'
         ? <button className="btn primary" onClick={generate} disabled={!!busy}><IconSpark /> Generate creative{total > 1 ? 's' : ''}</button>
-        : <button className="btn primary" onClick={next} disabled={!!busy || !canNext}>Next</button>}
+        : step === 'setup' && quickBatch
+          ? <button className="btn primary" onClick={generateBatch} disabled={!!busy || !canNext}><IconSpark /> Generate {total} creatives</button>
+          : <button className="btn primary" onClick={next} disabled={!!busy || !canNext}>Next</button>}
     </>
   );
 
@@ -293,8 +312,28 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
                 ? 'Your prompt (required). e.g. Fall promo: first month half price for new agencies.'
                 : 'Prompt (optional). e.g. Focus on agencies that just signed their first client.'} />
           </div>
+          <div className="wz-section">
+            <h3>How many creatives?</h3>
+            <div className="wz-count">
+              <button className="icon-btn" onClick={() => setCount((n) => Math.max(1, n - 1))} disabled={count <= 1} aria-label="Fewer">−</button>
+              <input type="number" min={1} max={10} value={count} aria-label="Number of creatives"
+                onChange={(e) => setCount(Math.min(10, Math.max(1, parseInt(e.target.value, 10) || 1)))} />
+              <button className="icon-btn" onClick={() => setCount((n) => Math.min(10, n + 1))} disabled={count >= 10} aria-label="More">+</button>
+              <span className="muted small">{format === 'both' ? `${total} images (each in 4:5 and 9:16)` : 'up to 10'}</span>
+            </div>
+            {count > 1 && (
+              <div className="segmented" role="radiogroup" aria-label="How the creatives differ" style={{ marginTop: 10 }}>
+                <button role="radio" aria-checked={batch === 'angles'} className={batch === 'angles' ? 'on' : ''} onClick={() => setBatch('angles')}>
+                  <strong>Each with its own angle</strong><small>Claude picks a different angle, hook and copy for each. Made right away</small>
+                </button>
+                <button role="radio" aria-checked={batch === 'designs'} className={batch === 'designs' ? 'on' : ''} onClick={() => setBatch('designs')}>
+                  <strong>Same copy, different designs</strong><small>You go through the steps once; each creative gets its own layout</small>
+                </button>
+              </div>
+            )}
+          </div>
           <details className="wz-more">
-            <summary>Options: {method === '100m' ? '$100M Offers' : 'Pre-Sold'} · {FORMAT_LABEL[format]} · {{ device: 'Device card', free: 'Free design', classic: 'Classic card' }[design]} · {STAGE_SHORT[stage]} · {count} {count > 1 ? 'versions' : 'version'}</summary>
+            <summary>Options: {method === '100m' ? '$100M Offers' : 'Pre-Sold'} · {FORMAT_LABEL[format]} · {{ device: 'Device card', free: 'Free design', classic: 'Classic card' }[design]} · {STAGE_SHORT[stage]}</summary>
             <div className="grid-3">
               <label className="field"><span>Method</span>
                 <select value={method} onChange={(e) => setMethod(e.target.value)}>
@@ -315,9 +354,6 @@ export default function CreateWizard({ brands, initialBrandId, settings, onClose
               </label>
               <label className="field"><span>Awareness stage</span>
                 <select value={stage} onChange={(e) => setStage(e.target.value)}>{STAGES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
-              </label>
-              <label className="field"><span>Versions</span>
-                <select value={count} onChange={(e) => setCount(Number(e.target.value))}>{[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n === 1 ? '1 version' : `${n} different versions`}</option>)}</select>
               </label>
             </div>
           </details>
